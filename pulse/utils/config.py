@@ -15,12 +15,29 @@ CONFIG_FILE = DATA_DIR / "config.json"
 
 @dataclass
 class LLMConfig:
-    """LLM 配置."""
-    provider: str = "openai"       # openai / ollama
+    """LLM 配置.
+
+    provider 可选值:
+      - "deepseek"  : DeepSeek API（默认）
+      - "openai"    : OpenAI API
+      - "ollama"    : 本地 Ollama
+      - "openai-compatible": 其他兼容 OpenAI 格式的 API
+    """
+    provider: str = "deepseek"
     api_key: str = ""
-    model: str = "gpt-4o-mini"
-    base_url: Optional[str] = None  # 兼容 OpenAI 代理
+    model: str = "deepseek-chat"
+    base_url: Optional[str] = None  # 默认 None，按 provider 自动选择
     enabled: bool = False
+
+    def __post_init__(self):
+        # 未指定 base_url 时按 provider 自动填充
+        if self.base_url is None:
+            defaults = {
+                "deepseek": "https://api.deepseek.com",
+                "openai": "https://api.openai.com/v1",
+                "ollama": "http://localhost:11434/v1",
+            }
+            self.base_url = defaults.get(self.provider, "")
 
     def to_dict(self):
         d = asdict(self)

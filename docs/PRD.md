@@ -304,14 +304,80 @@ HealthRecord
 
 | 编号 | 需求 | 优先级 | 说明 |
 |------|------|--------|------|
-| M7-01 | LLM 配置 | P0 | 选择 OpenAI API / 本地 Ollama，配置 API Key / 模型 |
+| M7-01 | LLM 配置 | P0 | 选择 DeepSeek / OpenAI / Ollama，配置 API Key / 模型 |
 | M7-02 | 分类管理 | P0 | 增删改查自定义分类，设置颜色和图标 |
 | M7-03 | 追踪规则 | P1 | 排除指定应用，设置隐私模式 |
 | M7-04 | 通知设置 | P2 | 系统托盘通知开关，休息提醒阈值 |
 | M7-05 | 数据管理 | P1 | 数据备份/恢复，清理旧数据，手动导出 |
 | M7-06 | 开机自启 | P1 | 可选随系统启动，最小化到托盘 |
-| M7-07 | 外观主题 | P2 | 浅色/深色主题切换 |
+| M7-07 | 外观主题 | P0 | 浅色/深色/跟随系统 三档主题 |
 | M7-08 | 语言 | P2 | 中/英文切换 |
+
+---
+
+## 3.9 M8 — 桌面客户端 UI
+
+### 3.9.1 界面布局
+
+参考 Tai 的设计风格，采用**左侧导航栏 + 右侧内容区**的两栏布局：
+
+```
+┌───────────────────────────────────────────┐
+│ ┌──────┐  ┌─────────────────────────────┐ │
+│ │  📊  │  │                             │ │
+│ │  Dashboard  │                             │ │
+│ │      │  │     内容区域                  │ │
+│ │  📈  │  │     (Stacked Pages)          │ │
+│ │  Statistics │                             │ │
+│ │      │  │                             │ │
+│ │  📅  │  │                             │ │
+│ │  Calendar   │                             │ │
+│ │      │  │                             │ │
+│ │  ⚙️  │  │                             │ │
+│ │  Settings   │                             │ │
+│ │      │  │                             │ │
+│ │      │  │                             │ │
+│ └──────┘  └─────────────────────────────┘ │
+│     ↓                      ↓              │
+│   Nav Bar              Content Area        │
+│   64px wide           Stretch              │
+└───────────────────────────────────────────┘
+```
+
+- 导航栏固定宽度 64px，图标 + 文字
+- 当前页面高亮
+- 窗口默认 1000×700，最小 800×600
+
+### 3.9.2 主题系统
+
+内置三档主题，统一使用 QSS（Qt Style Sheets）渲染：
+
+| Token | 暗色 | 亮色 |
+|-------|------|------|
+| 背景 | `#1a1a2e` | `#f5f5f8` |
+| 卡片 | `#25253a` | `#ffffff` |
+| 主文字 | `#ffffff` | `#1a1a2e` |
+| 次要文字 | `#a0a0b8` | `#6b6b80` |
+| 强调色 | `#7c5cfc` | `#7c5cfc` |
+| 边框 | `#3a3a50` | `#e0e0e8` |
+
+- **跟随系统**：读取 Windows 注册表 `AppsUseLightTheme`，0=暗色 1=亮色
+- 切换无需重启，实时生效
+
+### 3.9.3 导航页面
+
+| 页面 | 功能 |
+|------|------|
+| Dashboard（仪表盘） | 今日总时长、分类分布（彩色横条）、Top 应用列表、当前会话 |
+| Statistics（统计） | 日/周/月视图、对比分析（后续实现） |
+| Calendar（日历） | 月历视图 + 日记（后续实现） |
+| Settings（设置） | 通用、追踪、LLM、主题（后续完善） |
+
+### 3.9.4 系统托盘
+
+- 最小化到托盘运行
+- 右键菜单：显示主窗口 / 暂停追踪 / 退出
+- 托盘图标随追踪状态变化（运转中 / 已暂停）
 
 ---
 
@@ -383,41 +449,37 @@ Windows窗口事件 → 追踪服务 → 原始记录(SQLite)
                                  华为健康 API (可选)
 ```
 
-### 5.3 项目目录结构（草案）
+### 5.3 项目目录结构（当前）
 
 ```
 Pulse/
 ├── pulse/
 │   ├── __init__.py
-│   ├── main.py                    # 应用入口
+│   ├── main.py                    # 应用入口（CLI + GUI）
 │   ├── core/
-│   │   ├── tracker.py             # 窗口追踪引擎
-│   │   ├── classifier.py          # LLM 分类服务
-│   │   ├── analyzer.py            # 行为分析引擎
-│   │   └── health_sync.py         # 健康数据同步
+│   │   └── tracker.py             ✅ 窗口追踪引擎
 │   ├── db/
-│   │   ├── models.py              # SQLAlchemy 数据模型
-│   │   ├── repository.py          # 数据访问层
-│   │   └── migrations/            # 数据库迁移
-│   ├── ui/
-│   │   ├── main_window.py         # 主窗口
-│   │   ├── dashboard.py           # 看板页
-│   │   ├── statistics.py          # 统计页
-│   │   ├── calendar_view.py       # 日历页
-│   │   ├── settings.py            # 设置页
+│   │   ├── models.py              ✅ SQLAlchemy 数据模型
+│   │   └── repository.py          ✅ 数据访问层
+│   ├── ui/                        # 桌面 UI （本次新增）
+│   │   ├── __init__.py
+│   │   ├── theme.py               # 主题管理（暗/亮/系统）
+│   │   ├── main_window.py         # 主窗口 + 侧边导航
 │   │   ├── tray_icon.py           # 系统托盘
-│   │   └── widgets/               # 可复用组件
+│   │   └── pages/
+│   │       ├── __init__.py
+│   │       ├── dashboard_page.py  # 仪表盘页
+│   │       └── settings_page.py   # 设置页
 │   ├── services/
-│   │   ├── llm_client.py          # LLM API 封装
-│   │   └── reporter.py            # 报告生成
+│   │   └── (预留)
 │   └── utils/
-│       ├── config.py              # 配置管理
-│       └── constants.py           # 常量定义
+│       ├── config.py              ✅ 配置管理
+│       └── constants.py           ✅ 常量定义
 ├── tests/
+│   └── test_tracker.py            ✅ 冒烟测试
 ├── docs/
 │   └── PRD.md                     # 本文档
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
 
 ---
@@ -426,11 +488,11 @@ Pulse/
 
 ### Phase 1 — MVP（核心闭环）预计 3-4 周
 - [x] 项目初始化、目录结构搭建
-- [ ] M1: 应用追踪引擎（Windows 窗口监控 + SQLite 存储）
-- [ ] M2: LLM 自动分类（OpenAI API + 缓存 + 手动覆盖）
-- [ ] M3: 基础统计看板（今日概览 + 分类饼图 + Top 应用）
-- [ ] M7: 最小设置页（LLM 配置 + 分类管理）
-- [ ] 系统托盘 + 后台运行
+- [x] M1: 应用追踪引擎（Windows 窗口监控 + SQLite 存储）
+- [ ] M2: LLM 自动分类（DeepSeek API + 缓存 + 手动覆盖）
+- [x] M8: 桌面客户端框架（主窗口、侧边导航、主题系统、仪表盘）
+- [x] 系统托盘 + 后台运行
+- [ ] M3: 基础统计看板优化
 
 ### Phase 2 — 进阶分析 预计 2-3 周
 - [ ] M3: 完整统计（日/周/月视图 + 对比分析）
@@ -460,7 +522,7 @@ Pulse/
 |---|------|------|------|
 | 1 | LLM 默认方案 | OpenAI API vs 本地 Ollama | MVP 先用 OpenAI API（零部署成本），后续加 Ollama |
 | 2 | 窗口追踪技术 | pywin32 vs psutil vs uiautomation | 建议 pywin32 获取窗口标题 + psutil 获取进程名 |
-| 3 | UI 框架 | PyQt6 vs PySide6 | PyQt6 生态更成熟，文档更多 |
+| 3 | UI 框架 | PyQt6 vs PySide6 | 已选 PyQt6，已实现 |
 | 4 | 图表库 | pyqtgraph vs matplotlib vs QtCharts | pyqtgraph 性能好，原生 Qt 集成佳 |
 | 5 | 数据存储 | SQLite vs DuckDB | SQLite 够用，DuckDB 对分析查询有优势但引入额外依赖 |
 | 6 | 自动摘要 AI | 复用 LLM 客户端 vs 本地小模型 | 复用 LLM 客户端即可，摘要不是高频操作 |
