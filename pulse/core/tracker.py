@@ -168,8 +168,10 @@ class AppTracker:
     def _start_session(self, window: WindowInfo, is_idle: bool) -> None:
         now = time.time()
         browser_page = self._extract_browser_page(window) if not is_idle else None
+        exe_path = self._get_exe_path(window.pid) if not is_idle else None
         self._current = AppSession(
             process_name=window.process_name,
+            executable_path=exe_path,
             window_title=window.window_title,
             browser_page=browser_page,
             start_time=datetime.fromtimestamp(now),
@@ -276,6 +278,18 @@ class AppTracker:
             return None
 
         return cleaned
+
+    # ── 可执行文件路径 ─────────────────────────────────────
+
+    @staticmethod
+    def _get_exe_path(pid: int) -> Optional[str]:
+        """通过 PID 获取可执行文件完整路径."""
+        if pid <= 0:
+            return None
+        try:
+            return psutil.Process(pid).exe()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            return None
 
     # ── 辅助 ─────────────────────────────────────────────────
 

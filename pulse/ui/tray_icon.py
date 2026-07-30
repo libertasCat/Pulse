@@ -5,6 +5,7 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt  # type: ignore
 from PyQt6.QtGui import QAction, QIcon  # type: ignore
+from pulse.utils.icon_cache import get_pulse_icon
 from PyQt6.QtWidgets import (  # type: ignore
     QApplication, QMenu, QSystemTrayIcon, QWidget,
 )
@@ -19,10 +20,7 @@ class TrayIcon(QSystemTrayIcon):
         super().__init__(parent)
         self._parent = parent
 
-        # 使用内置图标（后续可替换为自定义 .ico/.png）
-        self.setIcon(QApplication.style().standardIcon(
-            QApplication.style().StandardPixmap.SP_ComputerIcon
-        ))
+        self.setIcon(get_pulse_icon())
         self.setToolTip("Pulse — 应用追踪中")
 
         self._build_menu()

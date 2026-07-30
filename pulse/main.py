@@ -13,6 +13,7 @@ from pulse.db.repository import Repository
 from pulse.ui.theme import ThemeManager, ThemeMode
 from pulse.utils.config import ConfigManager
 from pulse.utils.constants import DB_PATH
+from pulse.utils.single_instance import ensure_single_instance, release_singleton
 
 logger = logging.getLogger("pulse")
 
@@ -67,6 +68,12 @@ def run_tracker() -> None:
     """CLI 模式 —— 仅运行追踪引擎，后台打印状态."""
     setup_logging()
     _print_banner()
+
+    if not ensure_single_instance():
+        logger.error("Pulse 已在运行中，请勿重复启动")
+        print("[Pulse] 错误: Pulse 已在运行中，请勿重复启动")
+        sys.exit(1)
+
     _init_backend()
     assert _tracker is not None
 
@@ -113,6 +120,11 @@ def run_gui() -> None:
     setup_logging()
     _print_banner()
 
+    if not ensure_single_instance():
+        logger.error("Pulse 已在运行中，请勿重复启动")
+        print("[Pulse] 错误: Pulse 已在运行中，请勿重复启动")
+        sys.exit(1)
+
     # 创建 QApplication
     app = QApplication(sys.argv)
     app.setApplicationName("Pulse")
@@ -123,6 +135,13 @@ def run_gui() -> None:
     assert _repo is not None
     assert _tracker is not None
     assert _config_mgr is not None
+
+    # 定期数据清理（每天运行一次，默认保留 180 天）
+    from PyQt6.QtCore import QTimer as _QTimer
+    _cleanup_timer = _QTimer()
+    _cleanup_timer.timeout.connect(lambda: _repo.cleanup_old_data(180))
+    _cleanup_timer.start(86400000)  # 24h
+    _repo.cleanup_old_data(180)  # 启动时立刻清理一次
 
     # 主题
     theme = ThemeManager.instance()
@@ -165,12 +184,13 @@ def _print_banner() -> None:
 
 
 def _shutdown() -> None:
-    """安全关闭：停止追踪器 + 保存配置."""
+    """安全关闭：停止追踪器 + 保存配置 + 释放单例锁."""
     global _tracker, _config_mgr
     if _tracker:
         _tracker.stop()
     if _config_mgr:
         _config_mgr.save()
+    release_singleton()
     logger.info("Pulse 已安全退出")
 
 

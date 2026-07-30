@@ -12,7 +12,10 @@ from PyQt6.QtWidgets import (  # type: ignore
 from pulse.core.tracker import AppTracker
 from pulse.db.repository import Repository
 from pulse.ui.pages.dashboard_page import DashboardPage
+from pulse.ui.pages.stats_page import StatsPage
+from pulse.ui.pages.category_page import CategoryPage
 from pulse.ui.pages.settings_page import SettingsPage
+from pulse.utils.icon_cache import get_pulse_icon
 from pulse.ui.tray_icon import TrayIcon
 from pulse.utils.config import ConfigManager
 
@@ -33,6 +36,7 @@ class MainWindow(QMainWindow):
         self._tray: Optional[TrayIcon] = None
 
         self.setWindowTitle("Pulse")
+        self.setWindowIcon(get_pulse_icon())
         self.setMinimumSize(800, 600)
         self.resize(1000, 700)
 
@@ -44,6 +48,8 @@ class MainWindow(QMainWindow):
 
     def set_repo(self, repo: Repository) -> None:
         self._repo = repo
+        self._stats.set_repo(repo)
+        self._settings.set_repo(repo)
 
     def _setup_ui(self):
         central = QWidget()
@@ -81,7 +87,7 @@ class MainWindow(QMainWindow):
         nav_items = [
             (0, "📊", "仪表盘"),
             (1, "📈", "统计"),
-            (2, "📅", "日历"),
+            (2, "📁", "分类"),
             (3, "⚙️", "设置"),
         ]
 
@@ -102,14 +108,14 @@ class MainWindow(QMainWindow):
 
         # 页面
         self._dashboard = DashboardPage(self._tracker, self._repo)
-        self._stats_placeholder = self._make_placeholder("统计页面\n（即将推出）")
-        self._calendar_placeholder = self._make_placeholder("日历页面\n（即将推出）")
-        self._settings = SettingsPage(self._config_mgr)
+        self._stats = StatsPage(self._repo)
+        self._category = CategoryPage(self._repo, self._config_mgr)
+        self._settings = SettingsPage(self._config_mgr, self._repo)
 
-        self._stack.addWidget(self._dashboard)           # index 0
-        self._stack.addWidget(self._stats_placeholder)    # index 1
-        self._stack.addWidget(self._calendar_placeholder) # index 2
-        self._stack.addWidget(self._settings)             # index 3
+        self._stack.addWidget(self._dashboard)   # index 0
+        self._stack.addWidget(self._stats)        # index 1
+        self._stack.addWidget(self._category)     # index 2
+        self._stack.addWidget(self._settings)     # index 3
 
         root_layout.addWidget(sidebar)
         root_layout.addWidget(self._stack, stretch=1)

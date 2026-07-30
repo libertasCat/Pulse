@@ -30,6 +30,7 @@ QWidget {
     font-size: 13px;
 }
 
+
 /* ── 侧边栏 ── */
 QWidget#sidebar {
     background-color: #16162a;
@@ -57,21 +58,29 @@ QPushButton#navBtn:checked {
 /* ── 卡片 ── */
 QFrame#card {
     background-color: #25253a;
-    border-radius: 8px;
+    border-radius: 10px;
     border: 1px solid #3a3a50;
-    padding: 12px;
+    padding: 14px;
+}
+QFrame#card:hover {
+    border-color: #5a5a7a;
+}
+QFrame#card QFrame#card {
+    background-color: #1e1e34;
+    border-color: #2a2a44;
 }
 QLabel#cardTitle {
-    color: #a0a0b8;
-    font-size: 12px;
+    color: #808098;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.2px;
 }
 QLabel#cardValue {
     color: #ffffff;
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 700;
+    letter-spacing: -0.5px;
 }
 
 /* ── 分类横条 ── */
@@ -125,27 +134,66 @@ QFrame#separator {
     max-height: 1px;
 }
 
-/* ── ComboBox / SpinBox (设置页) ── */
-QComboBox, QSpinBox {
+/* ── ComboBox / SpinBox / LineEdit ── */
+QComboBox, QSpinBox, QLineEdit {
     background-color: #1e1e34;
     color: #ffffff;
-    border: 1px solid #3a3a50;
+    border: 1px solid #5a5a7a;
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: 4px 8px 4px 10px;
     min-height: 28px;
+    selection-background-color: #7c5cfc;
 }
-QComboBox:hover, QSpinBox:hover {
+QComboBox:hover, QSpinBox:hover, QLineEdit:hover {
+    border-color: #7c5cfc;
+}
+QComboBox:focus, QSpinBox:focus, QLineEdit:focus {
     border-color: #7c5cfc;
 }
 QComboBox::drop-down {
     border: none;
-    width: 20px;
+    width: 24px;
+    background: transparent;
+}
+QComboBox::down-arrow {
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #a0a0b8;
+    margin-right: 4px;
 }
 QComboBox QAbstractItemView {
-    background-color: #25253a;
+    background-color: #1e1e34;
     color: #ffffff;
-    border: 1px solid #3a3a50;
-    selection-background-color: #7c5cfc;
+    border: 1px solid #5a5a7a;
+    border-radius: 6px;
+    outline: none;
+    padding: 4px;
+}
+QComboBox QAbstractItemView::item {
+    padding: 6px 10px;
+    min-height: 24px;
+    border-radius: 4px;
+    color: #ffffff;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: #3a3a5a;
+    color: #ffffff;
+}
+QComboBox QAbstractItemView::item:selected {
+    background-color: #7c5cfc;
+    color: #ffffff;
+}
+QComboBox::placeholder, QLineEdit::placeholder {
+    color: #606080;
+}
+QComboBox QAbstractItemView QScrollBar:vertical {
+    background: transparent;
+    width: 6px;
+}
+QComboBox QAbstractItemView QScrollBar::handle:vertical {
+    background: #4a4a6a;
+    border-radius: 3px;
 }
 
 /* ── ScrollBar ── */
@@ -165,8 +213,81 @@ QScrollBar::handle:vertical:hover {
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
 }
-"""
 
+/* ── 右键菜单 ── */
+QMenu {
+    background-color: #25253a;
+    border: 1px solid #3a3a50;
+    border-radius: 8px;
+    padding: 6px 0;
+}
+QMenu::item {
+    padding: 8px 28px 8px 20px;
+    color: #ffffff;
+    font-size: 13px;
+}
+QMenu::item:selected {
+    background-color: #7c5cfc;
+    color: #ffffff;
+}
+QMenu::item:disabled {
+    color: #606080;
+}
+QMenu::separator {
+    height: 1px;
+    background: #3a3a50;
+    margin: 4px 12px;
+}
+
+/* ── 复选框 ── */
+QCheckBox {
+    color: #e0e0e8;
+    spacing: 10px;
+    font-size: 13px;
+}
+
+QColorDialog {
+    background-color: #25253a;
+    color: #ffffff;
+}
+QColorDialog QLabel, QColorDialog QSpinBox, QColorDialog QComboBox {
+    color: #ffffff;
+    background-color: #1e1e34;
+}
+QColorDialog QPushButton {
+    background-color: #7c5cfc;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    min-height: 24px;
+}
+QColorDialog QPushButton:hover {
+    background-color: #6a4acc;
+}
+QColorDialog QPushButton#cancelButton {
+    background-color: #4a4a6a;
+    color: #ffffff;
+}
+QFileDialog {
+    background-color: #25253a;
+    color: #ffffff;
+}
+QFileDialog QLabel, QFileDialog QComboBox, QFileDialog QLineEdit, QFileDialog QTreeView {
+    color: #ffffff;
+    background-color: #1e1e34;
+}
+QFileDialog QPushButton {
+    background-color: #7c5cfc;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+}
+QFileDialog QPushButton:hover {
+    background-color: #6a4acc;
+}
+"""
 
 LIGHT_QSS = """
 /* ── 全局 ── */
@@ -208,21 +329,29 @@ QPushButton#navBtn:checked {
 /* ── 卡片 ── */
 QFrame#card {
     background-color: #ffffff;
-    border-radius: 8px;
+    border-radius: 10px;
     border: 1px solid #e0e0e8;
-    padding: 12px;
+    padding: 14px;
+}
+QFrame#card:hover {
+    border-color: #c0c0d0;
+}
+QFrame#card QFrame#card {
+    background-color: #f8f8fc;
+    border-color: #e8e8f0;
 }
 QLabel#cardTitle {
     color: #808098;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.2px;
 }
 QLabel#cardValue {
     color: #1a1a2e;
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 700;
+    letter-spacing: -0.5px;
 }
 
 /* ── 分类横条 ── */
@@ -276,27 +405,66 @@ QFrame#separator {
     max-height: 1px;
 }
 
-/* ── ComboBox / SpinBox ── */
-QComboBox, QSpinBox {
+/* ── ComboBox / SpinBox / LineEdit ── */
+QComboBox, QSpinBox, QLineEdit {
     background-color: #ffffff;
     color: #1a1a2e;
-    border: 1px solid #e0e0e8;
+    border: 1px solid #d0d0d8;
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: 4px 8px 4px 10px;
     min-height: 28px;
+    selection-background-color: #ede5ff;
 }
-QComboBox:hover, QSpinBox:hover {
+QComboBox:hover, QSpinBox:hover, QLineEdit:hover {
+    border-color: #7c5cfc;
+}
+QComboBox:focus, QSpinBox:focus, QLineEdit:focus {
     border-color: #7c5cfc;
 }
 QComboBox::drop-down {
     border: none;
-    width: 20px;
+    width: 24px;
+    background: transparent;
+}
+QComboBox::down-arrow {
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #808098;
+    margin-right: 4px;
 }
 QComboBox QAbstractItemView {
     background-color: #ffffff;
     color: #1a1a2e;
-    border: 1px solid #e0e0e8;
-    selection-background-color: #ede5ff;
+    border: 1px solid #d0d0d8;
+    border-radius: 6px;
+    outline: none;
+    padding: 4px;
+}
+QComboBox QAbstractItemView::item {
+    padding: 6px 10px;
+    min-height: 24px;
+    border-radius: 4px;
+    color: #1a1a2e;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: #f0ecff;
+    color: #1a1a2e;
+}
+QComboBox QAbstractItemView::item:selected {
+    background-color: #7c5cfc;
+    color: #ffffff;
+}
+QComboBox::placeholder, QLineEdit::placeholder {
+    color: #b0b0b8;
+}
+QComboBox QAbstractItemView QScrollBar:vertical {
+    background: transparent;
+    width: 6px;
+}
+QComboBox QAbstractItemView QScrollBar::handle:vertical {
+    background: #d0d0d8;
+    border-radius: 3px;
 }
 
 /* ── ScrollBar ── */
@@ -315,6 +483,58 @@ QScrollBar::handle:vertical:hover {
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
+}
+
+/* ── 右键菜单 ── */
+QMenu {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e8;
+    border-radius: 8px;
+    padding: 6px 0;
+}
+QMenu::item {
+    padding: 8px 28px 8px 20px;
+    color: #1a1a2e;
+    font-size: 13px;
+}
+QMenu::item:selected {
+    background-color: #f0ecff;
+    color: #7c5cfc;
+}
+QMenu::separator {
+    height: 1px;
+    background: #e0e0e8;
+    margin: 4px 12px;
+}
+
+/* ── 复选框 ── */
+QCheckBox {
+    color: #1a1a2e;
+    spacing: 10px;
+    font-size: 13px;
+}
+
+QColorDialog {
+    background-color: #f5f5f8;
+    color: #1a1a2e;
+}
+QColorDialog QPushButton {
+    background-color: #7c5cfc;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+}
+QFileDialog {
+    background-color: #f5f5f8;
+    color: #1a1a2e;
+}
+QFileDialog QPushButton {
+    background-color: #7c5cfc;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
 }
 """
 

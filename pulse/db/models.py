@@ -35,6 +35,7 @@ class AppSession(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     process_name = Column(String(256), nullable=False, index=True, comment="进程名")
+    executable_path = Column(String(1024), nullable=True, comment="可执行文件路径（用于提取图标）")
     window_title = Column(String(1024), nullable=True, comment="窗口标题")
     browser_page = Column(String(512), nullable=True, comment="浏览器页面标题（提取后）")
     start_time = Column(DateTime, nullable=False, comment="开始时间")
@@ -51,3 +52,20 @@ class AppSession(Base):
             f"<AppSession(id={self.id}, process='{self.process_name}', "
             f"duration={self.duration_seconds}s, idle={self.is_idle})>"
         )
+
+
+class AppCategory(Base):
+    """应用 → 分类 映射表（手动 + 自动）. """
+
+    __tablename__ = "app_categories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    process_name = Column(String(256), unique=True, nullable=False, index=True, comment="进程名")
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False, comment="分类ID")
+    is_auto = Column(Boolean, default=False, comment="是否 LLM 自动分类")
+    created_at = Column(DateTime, default=datetime.now)
+
+    category = relationship("Category")
+
+    def __repr__(self) -> str:
+        return f"<AppCategory(process='{self.process_name}', cat_id={self.category_id})>"
