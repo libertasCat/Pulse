@@ -15,6 +15,29 @@ from pulse.utils.auto_start import is_auto_start_enabled, set_auto_start
 from pulse.utils.config import ConfigManager
 
 
+class StyledCombo(QComboBox):
+    """QComboBox 子类 —— 弹出时强制注入暗色样式."""
+
+    def showPopup(self):
+        self.view().window().setStyleSheet("""
+            QAbstractItemView {
+                background-color: #000000;
+                color: #ffffff;
+                border: 1px solid #5a5a7a;
+                outline: none;
+            }
+            QAbstractItemView::item {
+                padding: 6px 10px;
+                color: #ffffff;
+            }
+            QAbstractItemView::item:selected {
+                background-color: #7c5cfc;
+                color: #ffffff;
+            }
+        """)
+        super().showPopup()
+
+
 class SettingsPage(QWidget):
     """设置页面."""
 
@@ -89,7 +112,7 @@ class SettingsPage(QWidget):
         row2 = QHBoxLayout()
         lbl2 = QLabel("模型")
         lbl2.setFixedWidth(140)
-        self._llm_model = QComboBox()
+        self._llm_model = StyledCombo()
         self._llm_model.addItems(["deepseek-chat", "deepseek-reasoner", "gpt-4o-mini", "gpt-4o"])
         self._llm_model.setCurrentText(self._config_mgr.config.llm.model or "deepseek-chat")
         self._llm_model.setFixedWidth(200)
@@ -173,7 +196,7 @@ class SettingsPage(QWidget):
         row = QHBoxLayout()
         lbl = QLabel(label)
         lbl.setFixedWidth(140)
-        combo = QComboBox()
+        combo = StyledCombo()
         combo.addItems(items)
         combo.setFixedWidth(200)
         row.addWidget(lbl)

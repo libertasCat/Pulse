@@ -136,62 +136,46 @@ QFrame#separator {
 
 /* ── ComboBox / SpinBox / LineEdit ── */
 QComboBox, QSpinBox, QLineEdit {
-    background-color: #1e1e34;
+    background-color: #000000;
     color: #ffffff;
-    border: 1px solid #5a5a7a;
+    border: 1px solid #6a6a8a;
     border-radius: 4px;
-    padding: 4px 8px 4px 10px;
+    padding: 4px 10px;
     min-height: 28px;
-    selection-background-color: #7c5cfc;
 }
 QComboBox:hover, QSpinBox:hover, QLineEdit:hover {
     border-color: #7c5cfc;
 }
-QComboBox:focus, QSpinBox:focus, QLineEdit:focus {
-    border-color: #7c5cfc;
-}
 QComboBox::drop-down {
     border: none;
-    width: 24px;
-    background: transparent;
-}
-QComboBox::down-arrow {
-    image: none;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid #a0a0b8;
-    margin-right: 4px;
-}
-QComboBox QAbstractItemView {
-    background-color: #1e1e34;
-    color: #ffffff;
-    border: 1px solid #5a5a7a;
-    border-radius: 6px;
-    outline: none;
-    padding: 4px;
-}
-QComboBox QAbstractItemView::item {
-    padding: 6px 10px;
-    min-height: 24px;
-    border-radius: 4px;
-    color: #ffffff;
-}
-QComboBox QAbstractItemView::item:hover {
-    background-color: #3a3a5a;
-    color: #ffffff;
-}
-QComboBox QAbstractItemView::item:selected {
-    background-color: #7c5cfc;
-    color: #ffffff;
+    width: 20px;
 }
 QComboBox::placeholder, QLineEdit::placeholder {
     color: #606080;
 }
-QComboBox QAbstractItemView QScrollBar:vertical {
+
+/* ── 下拉列表（全局，因为弹出层不在母控件树内） ── */
+QAbstractItemView {
+    background-color: #000000;
+    color: #ffffff;
+    outline: none;
+    selection-background-color: #7c5cfc;
+}
+QAbstractItemView::item {
+    padding: 6px 10px;
+    color: #ffffff;
+}
+QAbstractItemView::item:hover {
+    background-color: #3a3a5a;
+}
+QAbstractItemView::item:selected {
+    background-color: #7c5cfc;
+}
+QAbstractItemView QScrollBar:vertical {
     background: transparent;
     width: 6px;
 }
-QComboBox QAbstractItemView QScrollBar::handle:vertical {
+QAbstractItemView QScrollBar::handle:vertical {
     background: #4a4a6a;
     border-radius: 3px;
 }
@@ -409,60 +393,44 @@ QFrame#separator {
 QComboBox, QSpinBox, QLineEdit {
     background-color: #ffffff;
     color: #1a1a2e;
-    border: 1px solid #d0d0d8;
+    border: 1px solid #c0c0d0;
     border-radius: 4px;
-    padding: 4px 8px 4px 10px;
+    padding: 4px 10px;
     min-height: 28px;
-    selection-background-color: #ede5ff;
 }
 QComboBox:hover, QSpinBox:hover, QLineEdit:hover {
     border-color: #7c5cfc;
 }
-QComboBox:focus, QSpinBox:focus, QLineEdit:focus {
-    border-color: #7c5cfc;
-}
 QComboBox::drop-down {
     border: none;
-    width: 24px;
-    background: transparent;
-}
-QComboBox::down-arrow {
-    image: none;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid #808098;
-    margin-right: 4px;
-}
-QComboBox QAbstractItemView {
-    background-color: #ffffff;
-    color: #1a1a2e;
-    border: 1px solid #d0d0d8;
-    border-radius: 6px;
-    outline: none;
-    padding: 4px;
-}
-QComboBox QAbstractItemView::item {
-    padding: 6px 10px;
-    min-height: 24px;
-    border-radius: 4px;
-    color: #1a1a2e;
-}
-QComboBox QAbstractItemView::item:hover {
-    background-color: #f0ecff;
-    color: #1a1a2e;
-}
-QComboBox QAbstractItemView::item:selected {
-    background-color: #7c5cfc;
-    color: #ffffff;
+    width: 20px;
 }
 QComboBox::placeholder, QLineEdit::placeholder {
     color: #b0b0b8;
 }
-QComboBox QAbstractItemView QScrollBar:vertical {
+
+/* ── 下拉列表（全局） ── */
+QAbstractItemView {
+    background-color: #ffffff;
+    color: #1a1a2e;
+    outline: none;
+    selection-background-color: #ede5ff;
+}
+QAbstractItemView::item {
+    padding: 6px 10px;
+    color: #1a1a2e;
+}
+QAbstractItemView::item:hover {
+    background-color: #f5f0ff;
+}
+QAbstractItemView::item:selected {
+    background-color: #ede5ff;
+}
+QAbstractItemView QScrollBar:vertical {
     background: transparent;
     width: 6px;
 }
-QComboBox QAbstractItemView QScrollBar::handle:vertical {
+QAbstractItemView QScrollBar::handle:vertical {
     background: #d0d0d8;
     border-radius: 3px;
 }
@@ -562,13 +530,36 @@ class ThemeManager:
         self.apply()
 
     def apply(self) -> None:
-        """将当前主题应用到 QApplication."""
+        """将当前主题应用到 QApplication（QSS + Palette）. """
         app = QApplication.instance()
         if app is None:
             return
         qss = self._resolve_qss()
         app.setStyleSheet(qss)
+        app.setPalette(self._build_palette())
         logger.info("主题已应用: %s", self.current_name)
+
+    def _build_palette(self) -> QPalette:
+        """构建与当前主题匹配的 QPalette."""
+        mode = self._resolved_mode()
+        pal = QPalette()
+        if mode == ThemeMode.DARK:
+            pal.setColor(QPalette.ColorRole.Window, QColor("#000000"))
+            pal.setColor(QPalette.ColorRole.WindowText, QColor("#ffffff"))
+            pal.setColor(QPalette.ColorRole.Button, QColor("#000000"))
+            pal.setColor(QPalette.ColorRole.ButtonText, QColor("#ffffff"))
+            pal.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
+            pal.setColor(QPalette.ColorRole.Base, QColor("#000000"))
+            pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#1a1a2e"))
+        else:
+            pal.setColor(QPalette.ColorRole.Window, QColor("#ffffff"))
+            pal.setColor(QPalette.ColorRole.WindowText, QColor("#1a1a2e"))
+            pal.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
+            pal.setColor(QPalette.ColorRole.ButtonText, QColor("#1a1a2e"))
+            pal.setColor(QPalette.ColorRole.Text, QColor("#1a1a2e"))
+            pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+            pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#f5f5f8"))
+        return pal
 
     @property
     def current_name(self) -> str:

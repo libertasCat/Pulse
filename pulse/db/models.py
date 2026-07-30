@@ -1,8 +1,8 @@
 """SQLAlchemy 数据模型定义."""
 
-from datetime import datetime
+from datetime import datetime, date
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, ForeignKey, Text
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -69,3 +69,55 @@ class AppCategory(Base):
 
     def __repr__(self) -> str:
         return f"<AppCategory(process='{self.process_name}', cat_id={self.category_id})>"
+
+
+class CalendarTask(Base):
+    """日历任务 —— 某日的一个任务条."""
+    __tablename__ = "calendar_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False, index=True, comment="所属日期")
+    title = Column(String(256), nullable=False, default="新任务", comment="任务标题")
+    sort_order = Column(Integer, default=0, comment="排序")
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    fields = relationship("CalendarTaskField", back_populates="task", cascade="all, delete-orphan",
+                          order_by="CalendarTaskField.sort_order")
+    comments = relationship("CalendarComment", back_populates="task", cascade="all, delete-orphan",
+                            order_by="CalendarComment.created_at")
+
+    def __repr__(self) -> str:
+        return f"<CalendarTask(id={self.id}, date='{self.date}', title='{self.title}')>"
+
+
+class CalendarTaskField(Base):
+    """任务文本字段 —— 类似 Notion 的内容块."""
+    __tablename__ = "calendar_task_fields"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("calendar_tasks.id"), nullable=False, comment="所属任务")
+    content = Column(Text, default="", comment="文本内容")
+    sort_order = Column(Integer, default=0, comment="排序")
+    created_at = Column(DateTime, default=datetime.now)
+
+    task = relationship("CalendarTask", back_populates="fields")
+
+    def __repr__(self) -> str:
+        return f"<CalendarTaskField(id={self.id}, task_id={self.task_id})>"
+
+
+class CalendarComment(Base):
+    """任务评论."""
+    __tablename__ = "calendar_comments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("calendar_tasks.id"), nullable=False, comment="所属任务")
+    author = Column(String(64), default="我", comment="作者")
+    content = Column(Text, nullable=False, comment="评论内容")
+    created_at = Column(DateTime, default=datetime.now)
+
+    task = relationship("CalendarTask", back_populates="comments")
+
+    def __repr__(self) -> str:
+        return f"<CalendarComment(id={self.id}, task_id={self.task_id})>"

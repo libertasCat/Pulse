@@ -8,7 +8,7 @@ from typing import Optional, List
 from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import Session as SASession, sessionmaker
 
-from pulse.db.models import Base, AppSession, AppCategory, Category
+from pulse.db.models import Base, AppSession, AppCategory, Category, CalendarTask, CalendarTaskField, CalendarComment
 from pulse.utils.constants import DB_PATH, DEFAULT_CATEGORIES
 
 logger = logging.getLogger(__name__)
@@ -303,3 +303,94 @@ class Repository:
                 .distinct().all()
             ]
             return [p for p in all_processes if p not in classified]
+
+    # ─── Calendar ─────────────────────────────────────────────
+
+    def get_tasks_by_month(self, year: int, month: int) -> List:
+        """获取某月所有任务（含 field 和 comment 数量）. """
+        with self.session() as s:
+            from sqlalchemy import func as _f
+            first = date(year, month, 1)
+            from calendar import monthrange
+            _, last_day = monthrange(year, month)
+            last = date(year, month, last_day)
+            rows = (
+                s.query(
+                    CalendarTask,
+                    _f.count(func.distinct(CalendarTaskField.id)).label("field_count"),
+                    _f.count(func.distinct(CalendarComment.id)).label("comment_count"),
+                )
+                .outerjoin(CalendarTaskField, CalendarTaskField.task_id == CalendarTask.id)
+                .outerjoin(CalendarComment, CalendarComment.task_id == CalendarTask.id)
+                .filter(CalendarTask.date >= first, CalendarTask.date <= last)
+                .group_by(CalendarTask.id)
+                .order_by(CalendarTask.date, CalendarTask.sort_order)
+                .all()
+            )
+            return rows
+
+    def get_tasks_by_date(self, target_date: date) -> List[CalendarTask]:
+        """获取指定日期的所有任务."""
+        with self.session() as s:
+            return (
+                s.query(CalendarTask)
+                .filter(CalendarTask.date == target_date)
+                .order_by(CalendarTask.sort_order)
+                .all()
+            )
+
+    def create_task(self, target_date: date, title: str = "新任务") -> CalendarTask:
+        """创建任务."""
+        with self.session() as s:
+            max_order = (
+                s.query(func.max(CalendarTask.sort_order))
+                .filter(CalendarTask.date == target_date)
+                .scalar() or 0
+            )
+            task = CalendarTask(date=target_date, title=title, sort_order=max_order + 1)
+            s.add(task)
+            s.flush()
+            return task
+
+    def update_task_title(self, task_id: int, title: str) -> bool:
+        with self.session() as s:
+            count = s.query(CalendarTask).filter(CalendarTask.id == task_id).update({"title": title})
+            return count > 0
+
+    def delete_task(self, task_id: int) -> bool:
+        with self.session() as s:
+            count = s.query(CalendarTask).filter(CalendarTask.id == task_id).delete()
+            return count > 0
+
+    def add_task_field(self, task_id: int, content: str = "") -> CalendarTaskField:
+        with self.session() as s:
+            max_order = (
+                s.query(func.max(CalendarTaskField.sort_order))
+                .filter(CalendarTaskField.task_id == task_id)
+                .scalar() or 0
+            )
+            field = CalendarTaskField(task_id=task_id, content=content, sort_order=max_order + 1)
+            s.add(field)
+            s.flush()
+            return field
+
+    def update_task_field(self, field_id: int, content: str) -> bool:
+        with self.session() as s:
+            count = s.query(CalendarTaskField).filter(CalendarTaskField.id == field_id).update({"content": content})
+            return count > 0
+
+    def delete_task_field(self, field_id: int) -> bool:
+        with self.session() as s:
+            count = s.query(CalendarTaskField).filter(CalendarTaskField.id == field_id).delete()
+            return count > 0
+
+    def add_comment(self, task_id: int, content: str, author: str = "我") -> CalendarComment:
+        with self.session() as s:
+            comment = CalendarComment(task_id=task_id, content=content, author=author)
+            s.add(comment)
+            s.flush()
+            return comment
+
+    def get_comments(self, task_id: int) -> List[CalendarComment]:
+        with self.session() as s:
+            return s.query(CalendarComment).filter(CalendarComment.task_id == task_id).order_by(CalendarComment.created_at).all()

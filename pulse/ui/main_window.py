@@ -14,6 +14,7 @@ from pulse.db.repository import Repository
 from pulse.ui.pages.dashboard_page import DashboardPage
 from pulse.ui.pages.stats_page import StatsPage
 from pulse.ui.pages.category_page import CategoryPage
+from pulse.ui.pages.calendar_page import CalendarPage
 from pulse.ui.pages.settings_page import SettingsPage
 from pulse.utils.icon_cache import get_pulse_icon
 from pulse.ui.tray_icon import TrayIcon
@@ -49,6 +50,7 @@ class MainWindow(QMainWindow):
     def set_repo(self, repo: Repository) -> None:
         self._repo = repo
         self._stats.set_repo(repo)
+        self._calendar.set_repo(repo)
         self._settings.set_repo(repo)
 
     def _setup_ui(self):
@@ -88,7 +90,8 @@ class MainWindow(QMainWindow):
             (0, "📊", "仪表盘"),
             (1, "📈", "统计"),
             (2, "📁", "分类"),
-            (3, "⚙️", "设置"),
+            (3, "📅", "日历"),
+            (4, "⚙️", "设置"),
         ]
 
         for btn_id, icon, text in nav_items:
@@ -110,12 +113,14 @@ class MainWindow(QMainWindow):
         self._dashboard = DashboardPage(self._tracker, self._repo)
         self._stats = StatsPage(self._repo)
         self._category = CategoryPage(self._repo, self._config_mgr)
+        self._calendar = CalendarPage(self._repo)
         self._settings = SettingsPage(self._config_mgr, self._repo)
 
         self._stack.addWidget(self._dashboard)   # index 0
         self._stack.addWidget(self._stats)        # index 1
         self._stack.addWidget(self._category)     # index 2
-        self._stack.addWidget(self._settings)     # index 3
+        self._stack.addWidget(self._calendar)     # index 3
+        self._stack.addWidget(self._settings)     # index 4
 
         root_layout.addWidget(sidebar)
         root_layout.addWidget(self._stack, stretch=1)
