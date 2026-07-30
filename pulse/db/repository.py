@@ -43,6 +43,12 @@ class Repository:
                 s.execute(text("ALTER TABLE app_sessions ADD COLUMN executable_path VARCHAR(1024)"))
                 logger.info("迁移: app_sessions 添加 executable_path 列")
 
+            # 检查 calendar_tasks 是否有 end_date 列
+            cal_cols = {c["name"] for c in inspector.get_columns("calendar_tasks")} if "calendar_tasks" in {t.name for t in Base.metadata.sorted_tables} else set()
+            if cal_cols and "end_date" not in cal_cols:
+                s.execute(text("ALTER TABLE calendar_tasks ADD COLUMN end_date DATE"))
+                logger.info("迁移: calendar_tasks 添加 end_date 列")
+
 
     def _seed_default_categories(self) -> None:
         with self.session() as session:
@@ -332,8 +338,10 @@ class Repository:
     def get_tasks_by_date(self, target_date: date) -> List[CalendarTask]:
         """获取指定日期的所有任务."""
         with self.session() as s:
+            from sqlalchemy.orm import joinedload
             return (
                 s.query(CalendarTask)
+                .options(joinedload(CalendarTask.fields), joinedload(CalendarTask.comments))
                 .filter(CalendarTask.date == target_date)
                 .order_by(CalendarTask.sort_order)
                 .all()
@@ -351,6 +359,16 @@ class Repository:
             s.add(task)
             s.flush()
             return task
+
+    def get_task_by_id(self, task_id: int) -> Optional[CalendarTask]:
+        with self.session() as s:
+            from sqlalchemy.orm import joinedload
+            return (
+                s.query(CalendarTask)
+                .options(joinedload(CalendarTask.fields), joinedload(CalendarTask.comments))
+                .filter(CalendarTask.id == task_id)
+                .first()
+            )
 
     def update_task_title(self, task_id: int, title: str) -> bool:
         with self.session() as s:

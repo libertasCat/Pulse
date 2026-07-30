@@ -76,7 +76,8 @@ class CalendarTask(Base):
     __tablename__ = "calendar_tasks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    date = Column(Date, nullable=False, index=True, comment="所属日期")
+    date = Column(Date, nullable=False, index=True, comment="开始日期")
+    end_date = Column(Date, nullable=True, index=True, comment="结束日期（多日任务）")
     title = Column(String(256), nullable=False, default="新任务", comment="任务标题")
     sort_order = Column(Integer, default=0, comment="排序")
     created_at = Column(DateTime, default=datetime.now)
