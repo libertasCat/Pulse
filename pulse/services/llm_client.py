@@ -22,7 +22,15 @@ class LLMClient:
     def _get_client(self):
         """懒加载 OpenAI 客户端."""
         if self._client is None and self._config:
-            from openai import OpenAI
+            try:
+                from openai import OpenAI
+            except ModuleNotFoundError:
+                import subprocess, sys
+                logger.warning("openai 包未安装，尝试自动安装...")
+                subprocess.check_call(
+                    [sys.executable, "-m", "pip", "install", "openai", "-q"]
+                )
+                from openai import OpenAI
             self._client = OpenAI(
                 api_key=self._config.api_key,
                 base_url=self._config.base_url or "https://api.deepseek.com",
@@ -68,7 +76,7 @@ class LLMClient:
             f"你是一个应用分类助手。请根据进程名将以下应用归类到已有分类中。\n\n"
             f"可用分类：\n{cat_list}\n\n"
             f"应用列表：\n{app_list}\n\n"
-            f"请返回 JSON 格式：{{ \"应用进程名\": \"分类名\" }}\n"
+            f"请返回 JSON 格式（不要代码块，纯 JSON）：{{ \"应用进程名\": \"分类名\" }}\n"
             f"只返回 JSON，不要额外说明。"
         )
 
@@ -77,7 +85,6 @@ class LLMClient:
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            response_format={"type": "json_object"},
         )
 
         content = response.choices[0].message.content

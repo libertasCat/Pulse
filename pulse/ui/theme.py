@@ -78,7 +78,7 @@ QLabel#cardTitle {
 }
 QLabel#cardValue {
     color: #ffffff;
-    font-size: 26px;
+    font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.5px;
 }
@@ -333,7 +333,7 @@ QLabel#cardTitle {
 }
 QLabel#cardValue {
     color: #1a1a2e;
-    font-size: 26px;
+    font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.5px;
 }

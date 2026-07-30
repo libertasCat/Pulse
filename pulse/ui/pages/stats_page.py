@@ -14,6 +14,7 @@ from pulse.ui.widgets.charts import (
     HorizontalBarChart, HourlyTimeline, HeatmapCalendar,
 )
 from pulse.utils.icon_cache import get_app_icon
+from pulse.utils.process_names import strip_ext
 
 _BAR_COLORS = [
     "#7c5cfc", "#2196F3", "#4CAF50", "#FF9800",
@@ -99,6 +100,27 @@ class StatsPage(QWidget):
         p0 = QWidget()
         lo0 = QVBoxLayout(p0)
         lo0.setContentsMargins(0, 0, 0, 0)
+
+        # 日导航
+        day_nav = QHBoxLayout()
+        self._day_prev = QPushButton("◀")
+        self._day_prev.setFixedSize(28, 28)
+        self._day_prev.setStyleSheet("QPushButton { border: none; border-radius: 4px; color: #a0a0b8; font-size: 12px; }"
+                                      "QPushButton:hover { background: #2a2a44; }")
+        self._day_prev.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._day_prev.clicked.connect(lambda: (setattr(self, '_day_offset', self._day_offset - 1), self._update_day_view()))
+        self._day_next = QPushButton("▶")
+        self._day_next.setFixedSize(28, 28)
+        self._day_next.setStyleSheet("QPushButton { border: none; border-radius: 4px; color: #a0a0b8; font-size: 12px; }"
+                                      "QPushButton:hover { background: #2a2a44; }")
+        self._day_next.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._day_next.clicked.connect(lambda: (setattr(self, '_day_offset', self._day_offset + 1), self._update_day_view()))
+        day_nav.addWidget(self._day_prev)
+        self._day_label = QLabel("", alignment=Qt.AlignmentFlag.AlignCenter)
+        self._day_label.setStyleSheet("font-size: 13px; font-weight: 600;")
+        day_nav.addWidget(self._day_label, stretch=1)
+        day_nav.addWidget(self._day_next)
+        lo0.addLayout(day_nav)
 
         lo0.addWidget(QLabel("24 小时活跃度", styleSheet="font-size:14px;font-weight:600;margin-bottom:4px;"))
         self._hourly_chart = HourlyTimeline()
@@ -208,6 +230,7 @@ class StatsPage(QWidget):
             if i != 0:
                 p.setVisible(False)
 
+        self._day_offset = 0
         self._week_offset = 0
         self._month_offset = 0
 
@@ -228,23 +251,33 @@ class StatsPage(QWidget):
         self._update_compare_view()
 
     def _update_day_view(self):
-        today = self._today
-        subtitle = today.strftime("%Y-%m-%d")
-        total = self._repo.get_total_duration_by_date(today)
+        target = self._today + timedelta(days=self._day_offset)
+        self._day_label.setText(target.strftime("%Y-%m-%d  %a"))
+        total = self._repo.get_total_duration_by_date(target)
         h, m = total // 3600, (total % 3600) // 60
-        self._subtitle.setText(f"{subtitle}  ·  总 {h}h {m:02d}m")
+        self._subtitle.setText(f"{target.isoformat()}  ·  总 {h}h {m:02d}m")
 
-        # 每小时
-        hourly = self._repo.get_hourly_breakdown(today)
+        hourly = self._repo.get_hourly_breakdown(target)
         self._hourly_chart.set_data([h["total_seconds"] for h in hourly])
 
         # Top 应用
-        apps = self._repo.get_usage_summary_by_date(today, "process_name")
+        apps = self._repo.get_usage_summary_by_date(target, "process_name")
         data = []
         for i, app in enumerate(apps[:10]):
-            exe_path = self._repo.get_latest_exe_path(app["name"])
-            icon = get_app_icon(app["name"], exe_path)
-            data.append((app["name"], app["total_seconds"], _BAR_COLORS[i % 8], icon))
+            raw_name = app["name"]
+            disp_name = strip_ext(raw_name)
+            exe_path = self._repo.get_latest_exe_path(raw_name)
+            if not exe_path:
+                try:
+                    import psutil
+                    for proc in psutil.process_iter(['name', 'exe']):
+                        if proc.info.get('name') == raw_name and proc.info.get('exe'):
+                            exe_path = proc.info['exe']
+                            break
+                except Exception:
+                    pass
+            icon = get_app_icon(raw_name, exe_path)
+            data.append((disp_name, app["total_seconds"], _BAR_COLORS[i % 8], icon))
         self._day_bar.set_data(data)
 
     def _update_week_view(self):

@@ -13,6 +13,7 @@ from pulse.core.tracker import AppTracker
 from pulse.db.repository import Repository
 from pulse.ui.widgets.charts import HorizontalBarChart, PieChart
 from pulse.utils.icon_cache import get_app_icon
+from pulse.utils.process_names import strip_ext
 
 _BAR_COLORS = [
     "#7c5cfc", "#2196F3", "#4CAF50", "#FF9800",
@@ -62,16 +63,15 @@ class DashboardPage(QWidget):
     def _build_stat_cards(self, layout: QVBoxLayout):
         row = QHBoxLayout()
         row.setSpacing(16)
-        self._time_card = self._card("今日活跃时长", "--")
-        self._apps_card = self._card("使用应用数", "--")
-        self._session_card = self._card("当前会话", "--")
-        row.addWidget(self._time_card)
-        row.addWidget(self._apps_card)
-        row.addWidget(self._session_card)
+        self._card_values = {}
+        for title in ("今日活跃时长", "使用应用数", "当前会话"):
+            card, v_label = self._make_stat_card(title, "--")
+            self._card_values[title] = v_label
+            row.addWidget(card)
         layout.addLayout(row)
 
     @staticmethod
-    def _card(title: str, value: str) -> QFrame:
+    def _make_stat_card(title: str, value: str) -> tuple[QFrame, QLabel]:
         card = QFrame()
         card.setObjectName("card")
         card.setFixedHeight(90)
@@ -80,11 +80,10 @@ class DashboardPage(QWidget):
         t = QLabel(title)
         t.setObjectName("cardTitle")
         v = QLabel(value)
-        v.setObjectName(f"cv_{title}")
-        v.setStyleSheet("font-size: 26px; font-weight: 700; color: #ffffff;")
+        v.setObjectName("cardValue")
         lo.addWidget(t)
         lo.addWidget(v, alignment=Qt.AlignmentFlag.AlignLeft)
-        return card
+        return card, v
 
     # ── 标签栏 ────────────────────────────────────────────
 
@@ -226,25 +225,36 @@ class DashboardPage(QWidget):
 
         if self._tracker and self._tracker.current_session:
             cur = self._tracker.current_session
-            self._set_card("当前会话", f"{cur.process_name}  {cur.duration_seconds}s")
+            self._set_card("当前会话", f"{strip_ext(cur.process_name)}  {cur.duration_seconds}s")
         else:
             self._set_card("当前会话", "---")
 
     def _update_bar_chart(self, top_apps: list):
         data = []
         for i, app in enumerate(top_apps[:10]):
-            name = app["name"]
+            raw_name = app["name"]            # 完整进程名（用于查找）
+            disp_name = strip_ext(raw_name)   # 去后缀（用于显示）
             secs = app["total_seconds"]
             color = _BAR_COLORS[i % len(_BAR_COLORS)]
-            # 尝试从 DB 获取 exe_path 用于提取真实图标
+            # 获取 exe 路径并提取图标
             exe_path = None
             if self._repo:
                 try:
-                    exe_path = self._repo.get_latest_exe_path(name)
+                    exe_path = self._repo.get_latest_exe_path(raw_name)
                 except Exception:
                     pass
-            icon = get_app_icon(name, exe_path)
-            data.append((name, secs, color, icon))
+            # 同时扫描正在运行的进程（兜底）
+            if not exe_path:
+                try:
+                    import psutil
+                    for proc in psutil.process_iter(['name', 'exe']):
+                        if proc.info.get('name') == raw_name and proc.info.get('exe'):
+                            exe_path = proc.info['exe']
+                            break
+                except Exception:
+                    pass
+            icon = get_app_icon(raw_name, exe_path)
+            data.append((disp_name, secs, color, icon))
         self._bar_chart.set_data(data)
 
     def _update_pie_chart(self):
@@ -253,9 +263,8 @@ class DashboardPage(QWidget):
         try:
             today = date.today()
             cats = self._repo.get_all_categories()
-            cat_map = {c.id: c for c in cats}
 
-            # 获取已分类的应用及其时长
+            # 获取已分类的应用
             app_cats = self._repo.get_all_app_categories()
             app_to_cat = {a["process_name"]: a for a in app_cats}
 
@@ -270,29 +279,32 @@ class DashboardPage(QWidget):
                     cid = mapping["category_id"]
                     cat_seconds[cid] = cat_seconds.get(cid, 0) + secs
 
-            # 构建饼图数据
             cat_data = []
             has_values = False
             for cat in cats:
                 secs = cat_seconds.get(cat.id, 0)
                 if secs > 0:
                     has_values = True
-                cat_data.append((cat.name, secs, cat.color))
+                cat_data.append((cat.name, secs, cat.color or "#9E9E9E"))
 
             if not has_values:
-                self._cat_placeholder.setText("尚无分类数据\n请前往设置 → 应用分类 为应用分配分类")
+                self._cat_placeholder.setText(
+                    "尚无分类数据\n请前往设置 → 应用分类 为应用分配分类"
+                    if not app_to_cat else
+                    "今日暂无已分类的应用使用记录"
+                )
                 self._cat_placeholder.setVisible(True)
                 self._pie_chart.setVisible(False)
             else:
                 self._cat_placeholder.setVisible(False)
                 self._pie_chart.setVisible(True)
                 self._pie_chart.set_data(cat_data)
-        except Exception:
-            pass
+        except Exception as e:
+            # 保留调试信息以便排查
+            import logging
+            logging.getLogger(__name__).warning("饼图更新失败: %s", e)
 
     def _set_card(self, title: str, value: str):
-        for card in self.findChildren(QFrame, "card"):
-            for child in card.findChildren(QLabel):
-                if child.objectName() == f"cv_{title}":
-                    child.setText(value)
-                    return
+        label = self._card_values.get(title)
+        if label:
+            label.setText(value)

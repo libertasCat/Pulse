@@ -143,6 +143,15 @@ def run_gui() -> None:
     _cleanup_timer.start(86400000)  # 24h
     _repo.cleanup_old_data(180)  # 启动时立刻清理一次
 
+    # AI 自动分类（每小时运行一次，只处理热门未分类应用）
+    if _config_mgr.config.llm.enabled:
+        from pulse.core.classifier import ClassifierService as _ClassifierService
+        _classifier = _ClassifierService(_repo, _config_mgr.config.llm)
+        _classifier.auto_classify()  # 启动时分类一次
+        _classify_timer = _QTimer()
+        _classify_timer.timeout.connect(_classifier.auto_classify)
+        _classify_timer.start(3600000)  # 每小时
+
     # 主题
     theme = ThemeManager.instance()
     mode_str = _config_mgr.config.theme

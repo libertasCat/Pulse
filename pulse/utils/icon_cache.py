@@ -6,8 +6,11 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtWidgets import QFileIconProvider
 
 from pulse.utils.constants import DATA_DIR
+
+_ICON_PROVIDER = QFileIconProvider()
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +45,12 @@ def _make_fallback() -> QIcon:
 
 
 def _extract_exe_icon(exe_path: str) -> Optional[QPixmap]:
-    """从 exe 文件提取 32x32 图标."""
+    """从 exe 文件提取图标（QFileIconProvider -> Windows Shell）. """
     try:
-        import win32gui
-        import win32api
-        large, small = win32gui.ExtractIconExW(exe_path, 0, 1, 1)
-        if small and small[0]:
-            # 从 HICON 转为 QPixmap
-            from PyQt6.QtGui import QPixmap
-            import ctypes
-            pm = QPixmap.fromWinHICON(small[0])
-            win32gui.DestroyIcon(small[0])
-            if large and large[0]:
-                win32gui.DestroyIcon(large[0])
+        from PyQt6.QtCore import QFileInfo
+        icon = _ICON_PROVIDER.icon(QFileInfo(exe_path))
+        if icon and not icon.isNull():
+            pm = icon.pixmap(32, 32)
             if pm and not pm.isNull():
                 return pm
     except Exception:
