@@ -20,7 +20,7 @@ class HorizontalBarChart(QWidget):
     def set_data(self, data: list[tuple[str, int, str, Optional[QIcon]]]) -> None:
         self._data = data
         vals = [v for _, v, _, _ in data]
-        self._max_value = max(vals, default=1)
+        self._max_value = max(vals, default=1) or 1
         self.update()
 
     def paintEvent(self, event):
