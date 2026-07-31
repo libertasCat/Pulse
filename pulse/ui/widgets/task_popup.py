@@ -15,7 +15,9 @@ class TaskCreatePopup(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("taskPopup")
-        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        # 用 Tool 替代 Popup：Popup 窗口在 Windows 上输入法(IME)支持有问题
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.setFixedSize(280, 140)
         self.setStyleSheet(
             "QFrame#taskPopup { background: #25253a; border: 1px solid #4a4a6a; "
@@ -70,8 +72,11 @@ class TaskCreatePopup(QFrame):
         self._title_input.clear()
         self.move(x, y)
         self.show()
-        self._title_input.setFocus()
-        QTimer.singleShot(50, self._title_input.setFocus)
+        self.raise_()
+        self.activateWindow()
+        # 使用 ActiveWindowFocusReason 建立输入法上下文
+        self._title_input.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        QTimer.singleShot(50, lambda: self._title_input.setFocus(Qt.FocusReason.ActiveWindowFocusReason))
 
     def set_callback(self, callback):
         self._callback = callback
