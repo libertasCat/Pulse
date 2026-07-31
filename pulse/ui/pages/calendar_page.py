@@ -48,6 +48,10 @@ class CalendarPage(QWidget):
         self._repo = repo
         self._refresh_grid()
 
+    def refresh(self):
+        """页面切换时调用的公开刷新入口."""
+        self._refresh_grid()
+
     # ── 导航 ──────────────────────────────────────────
 
     def _build_nav(self, layout: QVBoxLayout):

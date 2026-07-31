@@ -259,6 +259,10 @@ class DashboardPage(QWidget):
 
     # ── 刷新数据 ──────────────────────────────────────────
 
+    def refresh(self):
+        """页面切换时调用的公开刷新入口."""
+        self._refresh()
+
     def _refresh(self):
         today = date.today()
         total_sec = 0

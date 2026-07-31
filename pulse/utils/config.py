@@ -19,6 +19,7 @@ class LLMConfig:
 
     provider 可选值:
       - "deepseek"  : DeepSeek API（默认）
+      - "kimi"      : Kimi / Moonshot API
       - "openai"    : OpenAI API
       - "ollama"    : 本地 Ollama
       - "openai-compatible": 其他兼容 OpenAI 格式的 API
@@ -29,11 +30,21 @@ class LLMConfig:
     base_url: Optional[str] = None  # 默认 None，按 provider 自动选择
     enabled: bool = False
 
+    # 各厂商预设模型（可自由输入其他模型名）
+    PRESET_MODELS = {
+        "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+        "kimi": ["kimi-k2-0711-preview", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
+        "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o3-mini"],
+        "ollama": ["llama3", "qwen2.5", "deepseek-r1"],
+        "openai-compatible": [],
+    }
+
     def __post_init__(self):
         # 未指定 base_url 时按 provider 自动填充
         if self.base_url is None:
             defaults = {
                 "deepseek": "https://api.deepseek.com",
+                "kimi": "https://api.moonshot.cn/v1",
                 "openai": "https://api.openai.com/v1",
                 "ollama": "http://localhost:11434/v1",
             }

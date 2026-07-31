@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
 from pulse.db.repository import Repository
 from pulse.ui.theme import ThemeManager, ThemeMode
 from pulse.utils.auto_start import is_auto_start_enabled, set_auto_start
-from pulse.utils.config import ConfigManager
+from pulse.utils.config import ConfigManager, LLMConfig
 
 
 class StyledCombo(QComboBox):
@@ -94,34 +94,68 @@ class SettingsPage(QWidget):
         self._idle_spin = self._add_spin("空闲阈值（秒）", 30, 3600, self._config_mgr.config.tracker.idle_threshold)
 
     def _build_llm_section(self):
-        self._add_section("AI 分类")
+        self._add_section("AI 配置")
 
+        llm = self._config_mgr.config.llm
+
+        # ── 服务商 ──
+        row0 = QHBoxLayout()
+        lbl0 = QLabel("服务商")
+        lbl0.setFixedWidth(140)
+        self._llm_provider = StyledCombo()
+        self._llm_provider.addItems(["DeepSeek", "Kimi (Moonshot)", "OpenAI", "本地 Ollama", "自定义"])
+        provider_idx = {"deepseek": 0, "kimi": 1, "openai": 2, "ollama": 3}.get(llm.provider, 4)
+        self._llm_provider.setCurrentIndex(provider_idx)
+        self._llm_provider.setFixedWidth(200)
+        self._llm_provider.currentIndexChanged.connect(self._on_provider_changed)
+        row0.addWidget(lbl0)
+        row0.addWidget(self._llm_provider)
+        row0.addStretch()
+        self._layout.addLayout(row0)
+
+        # ── API Key ──
         row1 = QHBoxLayout()
         lbl1 = QLabel("API Key")
         lbl1.setFixedWidth(140)
         self._llm_key_input = QLineEdit()
         self._llm_key_input.setPlaceholderText("sk-... （留空则不启用）")
         self._llm_key_input.setFixedWidth(300)
-        # QLineEdit 样式由全局 QSS 统一管理
-        self._llm_key_input.setText(self._config_mgr.config.llm.api_key)
+        self._llm_key_input.setText(llm.api_key)
         row1.addWidget(lbl1)
         row1.addWidget(self._llm_key_input)
         row1.addStretch()
         self._layout.addLayout(row1)
 
+        # ── 模型（可编辑，支持任意模型名） ──
         row2 = QHBoxLayout()
         lbl2 = QLabel("模型")
         lbl2.setFixedWidth(140)
         self._llm_model = StyledCombo()
-        self._llm_model.addItems(["deepseek-chat", "deepseek-reasoner", "gpt-4o-mini", "gpt-4o"])
-        self._llm_model.setCurrentText(self._config_mgr.config.llm.model or "deepseek-chat")
+        self._llm_model.setEditable(True)  # 支持手动输入任意模型
         self._llm_model.setFixedWidth(200)
         row2.addWidget(lbl2)
         row2.addWidget(self._llm_model)
         row2.addStretch()
         self._layout.addLayout(row2)
 
-        self._llm_save_btn = QPushButton("保存 API 配置")
+        # ── Base URL（自定义服务商时编辑） ──
+        row3 = QHBoxLayout()
+        lbl3 = QLabel("Base URL")
+        lbl3.setFixedWidth(140)
+        self._llm_base_url = QLineEdit()
+        self._llm_base_url.setPlaceholderText("https://api.xxx.com/v1")
+        self._llm_base_url.setFixedWidth(300)
+        row3.addWidget(lbl3)
+        row3.addWidget(self._llm_base_url)
+        row3.addStretch()
+        self._layout.addLayout(row3)
+
+        # 初始化模型列表和 base_url
+        self._update_model_list(llm.provider)
+        self._llm_model.setCurrentText(llm.model or "")
+        self._llm_base_url.setText(llm.base_url or "")
+
+        self._llm_save_btn = QPushButton("保存配置")
         self._llm_save_btn.setStyleSheet(
             "QPushButton { background: #7c5cfc; border: none; border-radius: 4px; "
             "padding: 8px 20px; color: #fff; font-weight: 600; }"
@@ -235,15 +269,38 @@ class SettingsPage(QWidget):
         cfg.auto_start = enabled
         self._config_mgr.save()
 
+    def _on_provider_changed(self, idx: int):
+        """切换服务商 → 更新预设模型和默认 base_url."""
+        provider = ["deepseek", "kimi", "openai", "ollama", "openai-compatible"][idx]
+        defaults = {
+            "deepseek": "https://api.deepseek.com",
+            "kimi": "https://api.moonshot.cn/v1",
+            "openai": "https://api.openai.com/v1",
+            "ollama": "http://localhost:11434/v1",
+            "openai-compatible": "",
+        }
+        self._update_model_list(provider)
+        self._llm_base_url.setText(defaults[provider])
+
+    def _update_model_list(self, provider: str):
+        """按服务商填充预设模型."""
+        self._llm_model.blockSignals(True)
+        self._llm_model.clear()
+        models = LLMConfig.PRESET_MODELS.get(provider, [])
+        self._llm_model.addItems(models)
+        self._llm_model.blockSignals(False)
+
     def _save_llm_config(self):
         cfg = self._config_mgr.config
+        cfg.llm.provider = ["deepseek", "kimi", "openai", "ollama", "openai-compatible"][self._llm_provider.currentIndex()]
         cfg.llm.api_key = self._llm_key_input.text().strip()
-        cfg.llm.model = self._llm_model.currentText()
+        cfg.llm.model = self._llm_model.currentText().strip()
+        cfg.llm.base_url = self._llm_base_url.text().strip()
         cfg.llm.enabled = bool(cfg.llm.api_key)
         self._config_mgr.save()
         self._llm_save_btn.setText("已保存 ✓")
         from PyQt6.QtCore import QTimer
-        QTimer.singleShot(2000, lambda: self._llm_save_btn.setText("保存 API 配置"))
+        QTimer.singleShot(2000, lambda: self._llm_save_btn.setText("保存配置"))
 
     def _do_cleanup(self):
         if not self._repo:

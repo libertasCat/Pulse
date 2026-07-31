@@ -218,6 +218,12 @@ class CategoryPage(QWidget):
         self._repo = repo
         self._refresh_selector()
 
+    def refresh(self):
+        """页面切换时调用的公开刷新入口."""
+        self._refresh_selector()
+        if self._editing_cat_id is not None:
+            self._refresh_app_list()
+
     # ── 紧凑分类选择器（彩色图标按钮） ─────────────────────
 
     def _refresh_selector(self):

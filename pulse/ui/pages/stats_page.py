@@ -241,6 +241,10 @@ class StatsPage(QWidget):
 
     # ── 刷新 ─────────────────────────────────────────────
 
+    def refresh(self):
+        """页面切换时调用的公开刷新入口."""
+        self._refresh()
+
     def _refresh(self):
         if not self._repo:
             return

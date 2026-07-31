@@ -143,6 +143,18 @@ class MainWindow(QMainWindow):
 
     def _switch_page(self, btn_id: int):
         self._stack.setCurrentIndex(btn_id)
+        # 切换页面时刷新对应页面的数据
+        self._refresh_current_page(btn_id)
+
+    def _refresh_current_page(self, btn_id: int):
+        """切换页面时刷新数据，保证显示最新."""
+        page = self._stack.widget(btn_id)
+        try:
+            refresh = getattr(page, "refresh", None)
+            if callable(refresh):
+                refresh()
+        except Exception:
+            pass
 
     # ── 系统托盘 ──────────────────────────────────────────
 
