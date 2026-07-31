@@ -3,14 +3,51 @@
 from datetime import date, datetime
 from typing import Optional
 
-from PyQt6.QtCore import Qt  # type: ignore
+from PyQt6.QtCore import Qt, pyqtSignal  # type: ignore
 from PyQt6.QtWidgets import (  # type: ignore
-    QDateEdit, QDialog, QFrame, QHBoxLayout, QLabel,
+    QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QScrollArea, QTextEdit,
     QVBoxLayout, QWidget,
 )
 
 from pulse.db.repository import Repository
+
+
+class _DatePickerButton(QPushButton):
+    """日期选择按钮 —— 点击弹出独立日历对话框（比 QDateEdit 弹窗渲染可靠）. """
+
+    dateChanged = pyqtSignal()  # 日期变化信号（与 QDateEdit 兼容）
+
+    def __init__(self, initial_date: date, parent=None):
+        super().__init__(parent)
+        self._date = initial_date
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(
+            "QPushButton { padding: 4px 10px; border-radius: 6px; background: #25253a; "
+            "color: #e0e0e8; border: 1px solid #3a3a50; font-size: 12px; }"
+            "QPushButton:hover { border-color: #7c5cfc; }"
+        )
+        self.clicked.connect(self._open_calendar)
+        self._update_text()
+
+    def date(self) -> date:
+        return self._date
+
+    def setDate(self, d: date):
+        self._date = d
+        self._update_text()
+        self.dateChanged.emit()
+
+    def _update_text(self):
+        self.setText(self._date.strftime("%Y-%m-%d"))
+
+    def _open_calendar(self):
+        from pulse.ui.widgets.date_picker_dialog import DatePickerDialog
+        dlg = DatePickerDialog(self._date, self.window())
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            picked = dlg.get_selected()
+            if picked:
+                self.setDate(picked)
 
 
 class _FieldEdit(QTextEdit):
@@ -89,22 +126,10 @@ class TaskDetailDialog(QDialog):
         date_row.setSpacing(8)
         start_lbl = QLabel("开始")
         start_lbl.setStyleSheet("color: #808098; font-size: 12px; background: transparent;")
-        self._start_date = QDateEdit(self._task.date)
-        self._start_date.setCalendarPopup(True)
-        self._start_date.setStyleSheet(
-            "QDateEdit { padding: 4px 8px; border-radius: 6px; background: #25253a; "
-            "color: #e0e0e8; border: 1px solid #3a3a50; font-size: 12px; }"
-            "QDateEdit:focus { border-color: #7c5cfc; }"
-        )
+        self._start_date = self._make_date_edit(self._task.date)
         end_lbl = QLabel("结束")
         end_lbl.setStyleSheet("color: #808098; font-size: 12px; background: transparent;")
-        self._end_date = QDateEdit(self._task.end_date or self._task.date)
-        self._end_date.setCalendarPopup(True)
-        self._end_date.setStyleSheet(
-            "QDateEdit { padding: 4px 8px; border-radius: 6px; background: #25253a; "
-            "color: #e0e0e8; border: 1px solid #3a3a50; font-size: 12px; }"
-            "QDateEdit:focus { border-color: #7c5cfc; }"
-        )
+        self._end_date = self._make_date_edit(self._task.end_date or self._task.date)
         self._end_date.dateChanged.connect(self._save_dates)
         date_row.addWidget(start_lbl)
         date_row.addWidget(self._start_date)
@@ -172,6 +197,11 @@ class TaskDetailDialog(QDialog):
 
         # 剩余空间全部挤到底部，中间不留空隙
         inner_lo.addStretch(1)
+
+    @staticmethod
+    def _make_date_edit(value) -> _DatePickerButton:
+        """创建日期选择按钮（点击弹出独立日历对话框）. """
+        return _DatePickerButton(value)
 
     @staticmethod
     def _mk_label(text: str) -> QLabel:
@@ -293,8 +323,8 @@ class TaskDetailDialog(QDialog):
         self._repo.update_task_title(self._task_id, self._title_edit.text())
 
     def _save_dates(self):
-        end = self._end_date.date().toPyDate()
-        start = self._start_date.date().toPyDate()
+        end = self._end_date.date()
+        start = self._start_date.date()
         if end < start:
             end = start
         with self._repo.session() as s:

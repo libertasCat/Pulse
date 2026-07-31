@@ -40,8 +40,18 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(get_pulse_icon())
         self.setMinimumSize(800, 600)
         self.resize(1000, 700)
+        self._center_on_screen()
 
         self._setup_ui()
+
+    def _center_on_screen(self):
+        """窗口显示前显式居中，避免被系统放置到角落."""
+        from PyQt6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = self.frameGeometry()
+            geo.moveCenter(screen.availableGeometry().center())
+            self.move(geo.topLeft())
 
     def set_tracker(self, tracker: AppTracker) -> None:
         self._tracker = tracker
