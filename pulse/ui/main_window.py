@@ -110,7 +110,7 @@ class MainWindow(QMainWindow):
         self._stack.setObjectName("contentStack")
 
         # 页面
-        self._dashboard = DashboardPage(self._tracker, self._repo)
+        self._dashboard = DashboardPage(self._tracker, self._repo, self._config_mgr)
         self._stats = StatsPage(self._repo)
         self._category = CategoryPage(self._repo, self._config_mgr)
         self._calendar = CalendarPage(self._repo)

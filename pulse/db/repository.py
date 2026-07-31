@@ -376,9 +376,13 @@ class Repository:
             return count > 0
 
     def delete_task(self, task_id: int) -> bool:
+        """删除任务（ORM 方式，触发 cascade 连带删除字段和评论）. """
         with self.session() as s:
-            count = s.query(CalendarTask).filter(CalendarTask.id == task_id).delete()
-            return count > 0
+            task = s.query(CalendarTask).filter(CalendarTask.id == task_id).first()
+            if not task:
+                return False
+            s.delete(task)
+            return True
 
     def add_task_field(self, task_id: int, content: str = "") -> CalendarTaskField:
         with self.session() as s:

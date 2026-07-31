@@ -14,18 +14,19 @@ class TaskCreatePopup(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("taskPopup")
         self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setFixedSize(280, 140)
         self.setStyleSheet(
-            "QFrame { background: #25253a; border: 1px solid #4a4a6a; "
-            "border-radius: 12px; padding: 12px; }"
+            "QFrame#taskPopup { background: #25253a; border: 1px solid #4a4a6a; "
+            "border-radius: 12px; }"
         )
 
         lo = QVBoxLayout(self)
+        lo.setContentsMargins(16, 14, 16, 14)
         lo.setSpacing(8)
 
-        lo.addWidget(QLabel("新建任务", styleSheet="font-size: 14px; font-weight: 700; color: #fff;"))
+        lo.addWidget(QLabel("新建任务", styleSheet="font-size: 14px; font-weight: 700; color: #fff; background: transparent;"))
 
         self._title_input = QLineEdit()
         self._title_input.setPlaceholderText("任务标题...")
@@ -64,15 +65,16 @@ class TaskCreatePopup(QFrame):
         self._callback = None
 
     def show_at(self, x: int, y: int, callback):
-        """在日历上方弹出，callback 接收标题字符串."""
+        """在指定全局坐标弹出，callback 接收标题字符串."""
         self._callback = callback
         self._title_input.clear()
-        # 转换为全局坐标
-        parent_pos = self.parent().mapToGlobal(self.parent().pos()) if self.parent() else self.pos()
-        self.move(x + 20, y + 10)
+        self.move(x, y)
         self.show()
         self._title_input.setFocus()
         QTimer.singleShot(50, self._title_input.setFocus)
+
+    def set_callback(self, callback):
+        self._callback = callback
 
     def _confirm(self):
         title = self._title_input.text().strip()

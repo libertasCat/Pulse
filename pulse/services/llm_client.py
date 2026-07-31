@@ -126,3 +126,29 @@ class LLMClient:
         except Exception as e:
             logger.error("生成每日总结失败: %s", e)
             return ""
+
+    def analyze_usage(self, period_label: str, stats_text: str) -> str:
+        """分析用户使用情况并给出建议."""
+        client = self._get_client()
+        if not client:
+            return ""
+        try:
+            prompt = (
+                f"你是一名高效的时间管理与生产力分析专家。\n"
+                f"以下是用户{period_label}的电脑使用数据：\n\n"
+                f"{stats_text}\n\n"
+                f"请用中文给出分析，包括：\n"
+                f"1. 时间分配概述（哪些类别占用最多时间）\n"
+                f"2. 发现的行为模式或问题（如碎片化使用、娱乐占比过高、连续工作过长）\n"
+                f"3. 2-3 条具体可执行的改进建议\n"
+                f"请保持简洁、专业、有建设性，总字数 200-300 字。"
+            )
+            resp = client.chat.completions.create(
+                model=self._config.model or "deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+            )
+            return resp.choices[0].message.content or ""
+        except Exception as e:
+            logger.error("生成分析失败: %s", e)
+            return f"分析失败: {e}"

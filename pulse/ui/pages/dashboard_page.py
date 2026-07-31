@@ -6,12 +6,14 @@ from typing import Optional
 from PyQt6.QtCore import QTimer, Qt  # type: ignore
 from PyQt6.QtWidgets import (  # type: ignore
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget,
+    QScrollArea, QTextEdit, QVBoxLayout, QWidget,
 )
 
+from pulse.core.analyzer import AnalyzerService
 from pulse.core.tracker import AppTracker
 from pulse.db.repository import Repository
 from pulse.ui.widgets.charts import HorizontalBarChart, PieChart
+from pulse.utils.config import ConfigManager
 from pulse.utils.icon_cache import get_app_icon
 from pulse.utils.process_names import strip_ext
 
@@ -25,10 +27,12 @@ _BAR_COLORS = [
 class DashboardPage(QWidget):
     """仪表盘 —— 顶栏概览卡片 + 子标签页."""
 
-    def __init__(self, tracker: Optional[AppTracker] = None, repo: Optional[Repository] = None):
+    def __init__(self, tracker: Optional[AppTracker] = None, repo: Optional[Repository] = None,
+                 config_mgr: Optional[ConfigManager] = None):
         super().__init__()
         self._tracker = tracker
         self._repo = repo
+        self._config_mgr = config_mgr
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -171,20 +175,48 @@ class DashboardPage(QWidget):
         self._ai_tab = QWidget()
         ai_lo = QVBoxLayout(self._ai_tab)
         ai_lo.setContentsMargins(0, 0, 0, 0)
-        ai_title = QLabel("AI 行为分析")
-        ai_title.setStyleSheet("font-size: 14px; font-weight: 600; margin-bottom: 8px;")
-        ai_lo.addWidget(ai_title)
 
-        ai_body = QLabel(
-            "AI 分析功能即将推出\n\n"
-            "• 每日效率评分\n"
-            "• 使用模式识别\n"
-            "• 个性化建议\n"
-            "• 使用趋势预测"
+        # 周期选择 + 生成按钮
+        ai_toolbar = QHBoxLayout()
+        ai_toolbar.setSpacing(8)
+        self._ai_period = QButtonGroup(self)
+        self._ai_period.setExclusive(True)
+        for pid, pname in ((0, "今日"), (1, "本周"), (2, "本月")):
+            btn = QPushButton(pname)
+            btn.setCheckable(True)
+            btn.setFixedHeight(30)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(self._tab_style())
+            self._ai_period.addButton(btn, pid)
+            ai_toolbar.addWidget(btn)
+        if self._ai_period.buttons():
+            self._ai_period.buttons()[0].setChecked(True)
+
+        self._ai_run_btn = QPushButton("🤖 生成分析")
+        self._ai_run_btn.setFixedHeight(30)
+        self._ai_run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._ai_run_btn.setStyleSheet(
+            "QPushButton { background: #7c5cfc; border: none; border-radius: 6px; "
+            "padding: 4px 16px; color: #fff; font-weight: 600; font-size: 12px; }"
+            "QPushButton:hover { background: #6a4acc; }"
+            "QPushButton:disabled { background: #4a4a6a; color: #808098; }"
         )
-        ai_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ai_body.setStyleSheet("color: #808098; font-size: 14px; line-height: 2; padding: 60px;")
-        ai_lo.addWidget(ai_body)
+        self._ai_run_btn.clicked.connect(self._run_ai_analysis)
+        ai_toolbar.addWidget(self._ai_run_btn)
+        ai_toolbar.addStretch()
+        ai_lo.addLayout(ai_toolbar)
+
+        # 结果显示区
+        self._ai_result = QTextEdit()
+        self._ai_result.setReadOnly(True)
+        self._ai_result.setPlaceholderText(
+            "点击「生成分析」获取 AI 对你使用行为的洞察与建议"
+        )
+        self._ai_result.setStyleSheet(
+            "QTextEdit { background: transparent; border: none; color: #c0c0d0; "
+            "font-size: 13px; line-height: 1.6; }"
+        )
+        ai_lo.addWidget(self._ai_result, stretch=1)
         stack_lo.addWidget(self._ai_tab)
 
         self._cat_tab.setVisible(False)
@@ -196,6 +228,34 @@ class DashboardPage(QWidget):
         self._app_tab.setVisible(tab_id == 0)
         self._cat_tab.setVisible(tab_id == 1)
         self._ai_tab.setVisible(tab_id == 2)
+
+    # ── AI 分析 ─────────────────────────────────────────
+
+    def _run_ai_analysis(self):
+        if not self._repo or not self._config_mgr:
+            return
+        llm_cfg = self._config_mgr.config.llm
+        if not llm_cfg.api_key:
+            self._ai_result.setPlainText("⚠️ 未配置 LLM API Key\n请前往 设置 → AI 分类 填写 DeepSeek API Key")
+            return
+
+        period_map = {0: "day", 1: "week", 2: "month"}
+        pid = self._ai_period.checkedId()
+        period = period_map.get(pid, "day")
+
+        self._ai_run_btn.setEnabled(False)
+        self._ai_run_btn.setText("分析中...")
+        self._ai_result.setPlainText("正在调用 AI 分析，请稍候...")
+
+        try:
+            svc = AnalyzerService(self._repo, llm_cfg)
+            result = svc.analyze(period)
+            self._ai_result.setPlainText(result)
+        except Exception as e:
+            self._ai_result.setPlainText(f"分析失败: {e}")
+        finally:
+            self._ai_run_btn.setEnabled(True)
+            self._ai_run_btn.setText("🤖 生成分析")
 
     # ── 刷新数据 ──────────────────────────────────────────
 

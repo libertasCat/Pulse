@@ -4,7 +4,7 @@ import calendar
 from datetime import date
 from typing import Callable, Optional
 
-from PyQt6.QtCore import QRectF, Qt  # type: ignore
+from PyQt6.QtCore import QRectF, Qt, QVariantAnimation  # type: ignore
 from PyQt6.QtGui import (  # type: ignore
     QColor, QCursor, QFont, QMouseEvent, QPainter, QPainterPath, QPen,
 )
@@ -25,6 +25,14 @@ class NotionGrid(QWidget):
         self._hover_task_id: Optional[int] = None
         self._drag_side_task_id: Optional[int] = None
         self._drag_target_day: Optional[int] = None
+
+        # + 按钮 hover 动画
+        self._plus_anim = QVariantAnimation(self)
+        self._plus_anim.setDuration(150)
+        self._plus_anim.setStartValue(0.0)
+        self._plus_anim.setEndValue(1.0)
+        self._plus_anim.valueChanged.connect(self._on_plus_anim)
+        self._plus_progress = 0.0
 
         self.on_task_click: Optional[Callable[[int], None]] = None
         self.on_cell_add: Optional[Callable[[int, int, int], None]] = None
@@ -112,25 +120,36 @@ class NotionGrid(QWidget):
 
                 is_today = (self._year == self._today.year and
                             self._month == self._today.month and day_num == self._today.day)
+
+                # ── 右上角：日期 ──
                 if is_today:
                     path = QPainterPath()
-                    path.addEllipse(x + 18 - 14, y + 18 - 14, 28, 28)
+                    path.addEllipse(x + cw - 32, y + 4, 28, 28)
                     painter.fillPath(path, QColor("#7c5cfc"))
                     painter.setPen(QColor("#ffffff"))
                 else:
                     painter.setPen(QColor("#ffffff"))
                 painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold if is_today else QFont.Weight.Medium))
-                painter.drawText(QRectF(x + 4, y + 4, 36, 28), Qt.AlignmentFlag.AlignCenter, str(day_num))
+                painter.drawText(QRectF(x + cw - 40, y + 4, 36, 28), Qt.AlignmentFlag.AlignCenter, str(day_num))
 
-                # Hover +
-                if day_num == self._hover_day:
-                    px, py = x + cw - 22, y + 6
+                # ── 左上角：圆角矩形 + 按钮（Notion 风格） ──
+                if in_month:
+                    is_hover_btn = (day_num == self._hover_day)
+                    t = self._plus_progress if is_hover_btn else 0.0
+                    bg_r = int(0x2A + (0x7C - 0x2A) * t)
+                    bg_g = int(0x2A + (0x5C - 0x2A) * t)
+                    bg_b = int(0x44 + (0xFC - 0x44) * t)
+                    fg_r = int(0x80 + (0xFF - 0x80) * t)
+                    fg_g = int(0x80 + (0xFF - 0x80) * t)
+                    fg_b = int(0x98 + (0xFF - 0x98) * t)
+                    # 圆角矩形（20x18，位于左上角）
+                    rect = QRectF(x + 4, y + 7, 20, 18)
                     path2 = QPainterPath()
-                    path2.addEllipse(px, py, 18, 18)
-                    painter.fillPath(path2, QColor("#4a4a6a"))
-                    painter.setPen(QColor("#ffffff"))
+                    path2.addRoundedRect(rect, 4, 4)
+                    painter.fillPath(path2, QColor(bg_r, bg_g, bg_b))
+                    painter.setPen(QColor(fg_r, fg_g, fg_b))
                     painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-                    painter.drawText(QRectF(px, py, 18, 18), Qt.AlignmentFlag.AlignCenter, "+")
+                    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "+")
 
         # ── 任务条（单次绘制，错行堆叠，简洁边框） ──
         task_rows = self._get_stack()
@@ -185,9 +204,26 @@ class NotionGrid(QWidget):
 
     # ── 鼠标 ────────────────────────────────────────────
 
+    def _on_plus_anim(self, value: float):
+        self._plus_progress = float(value)
+        self.update()
+
     def mouseMoveEvent(self, event: QMouseEvent):
         x, y = int(event.position().x()), int(event.position().y())
-        self._hover_day = self._day_at(x, y)
+        new_day = self._day_at(x, y)
+        if new_day != self._hover_day:
+            # 开始 hover 动画
+            self._plus_anim.stop()
+            self._plus_progress = 1.0 if new_day > 0 else 0.0
+            if new_day > 0:
+                self._plus_anim.setStartValue(0.0)
+                self._plus_anim.setEndValue(1.0)
+                self._plus_anim.start()
+            else:
+                self._plus_anim.setStartValue(1.0)
+                self._plus_anim.setEndValue(0.0)
+                self._plus_anim.start()
+        self._hover_day = new_day
 
         if self._drag_side_task_id is not None:
             nd = self._hover_day
@@ -235,13 +271,13 @@ class NotionGrid(QWidget):
         if day <= 0:
             return
 
-        # + 按钮
+        # + 按钮（左上角圆角矩形）
         col = int(x / self._cell_w)
         row = int((y - self._header_h) / self._cell_h) if y >= self._header_h else -1
         cx = col * self._cell_w
         cy = self._header_h + row * self._cell_h
-        if (cx + self._cell_w - 22 <= x <= cx + self._cell_w - 4 and
-                cy + 6 <= y <= cy + 24 and self._hover_day == day):
+        if (cx + 4 <= x <= cx + 24 and
+                cy + 7 <= y <= cy + 25 and self._hover_day == day):
             if self.on_cell_add:
                 self.on_cell_add(self._year, self._month, day)
             return
@@ -287,8 +323,8 @@ class NotionGrid(QWidget):
         row = int((y - self._header_h) / self._cell_h) if y >= self._header_h else -1
         cx2 = col * self._cell_w
         cy2 = self._header_h + row * self._cell_h
-        if (cx2 + self._cell_w - 22 <= x <= cx2 + self._cell_w - 4 and
-                cy2 + 6 <= y <= cy2 + 24):
+        if (cx2 + 4 <= x <= cx2 + 24 and
+                cy2 + 7 <= y <= cy2 + 25):
             return
 
         # 检查是否点击在任务条上
@@ -310,7 +346,14 @@ class NotionGrid(QWidget):
         self._hover_day = 0
         self._hover_task_id = None
         self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-        self.update()
+        # 淡出动画
+        if self._plus_progress > 0:
+            self._plus_anim.stop()
+            self._plus_anim.setStartValue(self._plus_progress)
+            self._plus_anim.setEndValue(0.0)
+            self._plus_anim.start()
+        else:
+            self.update()
 
     def minimumSizeHint(self):
         from PyQt6.QtCore import QSize

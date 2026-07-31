@@ -13,6 +13,13 @@ from PyQt6.QtWidgets import (  # type: ignore
 from pulse.db.repository import Repository
 
 
+class _FieldEdit(QTextEdit):
+    """字段文本框 —— 滚轮事件交给父级滚动区域，避免内部滚动方向错乱."""
+
+    def wheelEvent(self, event):
+        event.ignore()  # 让事件冒泡到对话框的滚动区域
+
+
 class TaskDetailDialog(QDialog):
     """屏幕中央出现的 Notion 风格任务详情卡片."""
 
@@ -21,6 +28,7 @@ class TaskDetailDialog(QDialog):
         self._task_id = task_id
         self._repo = repo
         self._task = repo.get_task_by_id(task_id)
+        self._field_edits: list = []  # 所有字段 edit 引用，用于统一重测尺寸
 
         # 模态 + 无边框
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -38,8 +46,8 @@ class TaskDetailDialog(QDialog):
         inner = QWidget()
         inner.setStyleSheet("background: transparent;")
         inner_lo = QVBoxLayout(inner)
-        inner_lo.setContentsMargins(24, 20, 24, 20)
-        inner_lo.setSpacing(12)
+        inner_lo.setContentsMargins(20, 10, 20, 14)
+        inner_lo.setSpacing(6)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -120,7 +128,7 @@ class TaskDetailDialog(QDialog):
         # ── 字段（带边框） ──
         inner_lo.addWidget(self._mk_label("字段"))
         self._fields_layout = QVBoxLayout()
-        self._fields_layout.setSpacing(6)
+        self._fields_layout.setSpacing(4)
         self._rebuild_fields()
         inner_lo.addLayout(self._fields_layout)
 
@@ -137,7 +145,7 @@ class TaskDetailDialog(QDialog):
         # ── 评论 ──
         inner_lo.addWidget(self._mk_label("评论"))
         self._comments_layout = QVBoxLayout()
-        self._comments_layout.setSpacing(6)
+        self._comments_layout.setSpacing(4)
         self._rebuild_comments()
         inner_lo.addLayout(self._comments_layout)
 
@@ -162,6 +170,9 @@ class TaskDetailDialog(QDialog):
         comment_row.addWidget(cs)
         inner_lo.addLayout(comment_row)
 
+        # 剩余空间全部挤到底部，中间不留空隙
+        inner_lo.addStretch(1)
+
     @staticmethod
     def _mk_label(text: str) -> QLabel:
         lbl = QLabel(text)
@@ -171,11 +182,28 @@ class TaskDetailDialog(QDialog):
     # ── 字段 ──────────────────────────────────────────
 
     def _rebuild_fields(self):
+        """重新查询任务获取最新字段（避免 ORM 缓存导致删除/新增不生效）. """
         self._clear_layout(self._fields_layout)
+        self._field_edits = []
+        if not self._repo:
+            return
+        self._task = self._repo.get_task_by_id(self._task_id)
         if not self._task:
             return
         for field in self._task.fields:
             self._add_field_widget(field.id, field.content)
+
+    @staticmethod
+    def _resize_to_content(edit: QTextEdit):
+        """按内容实际高度自适应（Notion 风格）：不裁剪、不用内部滚轮，
+        整个对话框滚动。空字段统一 30px."""
+        doc_h = int(edit.document().size().height()) + 8
+        h = max(30, doc_h)
+        edit.setFixedHeight(h)
+        # 外层 frame 同步高度
+        parent = edit.parentWidget()
+        if parent:
+            parent.setFixedHeight(h + 10)
 
     def _add_field_widget(self, fid: int, content: str):
         frame = QFrame()
@@ -186,15 +214,24 @@ class TaskDetailDialog(QDialog):
         )
         lo = QHBoxLayout(frame)
         lo.setContentsMargins(6, 4, 6, 4)
+        lo.setSpacing(4)
 
-        edit = QTextEdit()
+        edit = _FieldEdit()
         edit.setPlainText(content)
-        edit.setFixedHeight(52)
+        edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         edit.setStyleSheet(
             "QTextEdit { background: transparent; border: none; color: #e0e0e8; "
             "font-size: 13px; padding: 2px; }"
         )
-        edit.textChanged.connect(lambda fid=fid, e=edit: self._repo.update_task_field(fid, e.toPlainText()))
+
+        def on_text_changed():
+            self._repo.update_task_field(fid, edit.toPlainText())
+            self._resize_to_content(edit)  # 每次输入都按内容调整
+
+        edit.textChanged.connect(on_text_changed)
+        # 初始按内容调整（空字段统一 30px，有内容的展开显示全部）
+        self._resize_to_content(edit)
+        self._field_edits.append(edit)
 
         del_btn = QPushButton("✕")
         del_btn.setFixedSize(24, 24)
@@ -204,11 +241,30 @@ class TaskDetailDialog(QDialog):
             "color: #606080; font-size: 12px; }"
             "QPushButton:hover { background: #f44336; color: #fff; }"
         )
-        del_btn.clicked.connect(lambda fid=fid: (self._repo.delete_task_field(fid), self._rebuild_fields()))
+        del_btn.clicked.connect(lambda checked, fid=fid: self._delete_field(fid))
 
         lo.addWidget(edit, stretch=1)
         lo.addWidget(del_btn)
         self._fields_layout.addWidget(frame)
+
+    def _delete_field(self, fid: int):
+        """删除字段并立即刷新（独立方法便于排查）. """
+        try:
+            self._repo.delete_task_field(fid)
+        except Exception as e:
+            print(f"删除字段失败: {e}")
+        self._rebuild_fields()
+
+    def _resize_all_fields(self):
+        """布局变化后重新测量所有字段高度（防止换行后尺寸失准）. """
+        for edit in self._field_edits:
+            self._resize_to_content(edit)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 对话框尺寸变化 → 字段宽度变化 → 换行变化 → 重新测高
+        from PyQt6.QtCore import QTimer as _QT
+        _QT.singleShot(0, self._resize_all_fields)
 
     # ── 评论 ──────────────────────────────────────────
 

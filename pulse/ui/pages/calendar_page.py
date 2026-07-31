@@ -120,10 +120,14 @@ class CalendarPage(QWidget):
     # ── 新建任务 ─────────────────────────────────────
 
     def _on_cell_add(self, year: int, month: int, day: int):
-        """双击或 + → 弹出创建卡片."""
-        gl_x = int(self._grid.width() / 2 - 140)
-        gl_y = int(self._grid.height() / 2 - 70)
-        self._popup.show_at(gl_x + 50, gl_y, lambda title: self._do_create(year, month, day, title))
+        """双击或 + → 在日历页面正中间弹出创建卡片."""
+        # 计算屏幕全局坐标（Popup 窗口用全局坐标定位）
+        center = self.mapToGlobal(self.rect().center())
+        gx = int(center.x() - 140)
+        gy = int(center.y() - 70)
+        self._popup.move(gx, gy)
+        self._popup.show()
+        self._popup.set_callback(lambda title: self._do_create(year, month, day, title))
 
     def _do_create(self, year: int, month: int, day: int, title: str):
         if not self._repo:
