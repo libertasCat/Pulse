@@ -313,9 +313,12 @@ class Repository:
     # ─── Calendar ─────────────────────────────────────────────
 
     def get_tasks_by_month(self, year: int, month: int) -> List:
-        """获取某月所有任务（含 field 和 comment 数量）. """
+        """获取与某月有交集的所有任务（含跨月任务）.
+
+        筛选条件：任务开始日期 ≤ 月末，且（无结束日期 或 结束日期 ≥ 月初）
+        """
         with self.session() as s:
-            from sqlalchemy import func as _f
+            from sqlalchemy import func as _f, or_
             first = date(year, month, 1)
             from calendar import monthrange
             _, last_day = monthrange(year, month)
@@ -328,7 +331,10 @@ class Repository:
                 )
                 .outerjoin(CalendarTaskField, CalendarTaskField.task_id == CalendarTask.id)
                 .outerjoin(CalendarComment, CalendarComment.task_id == CalendarTask.id)
-                .filter(CalendarTask.date >= first, CalendarTask.date <= last)
+                .filter(
+                    CalendarTask.date <= last,
+                    or_(CalendarTask.end_date.is_(None), CalendarTask.end_date >= first),
+                )
                 .group_by(CalendarTask.id)
                 .order_by(CalendarTask.date, CalendarTask.sort_order)
                 .all()

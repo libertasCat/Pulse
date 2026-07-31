@@ -45,9 +45,19 @@ class NotionGrid(QWidget):
         self._tasks = []
         for i, row in enumerate(tasks):
             task = row[0]
-            end_day = task.end_date.day if task.end_date else task.date.day
-            self._tasks.append((task.id, task.date.day, end_day, task.title))
+            end = task.end_date or task.date
+            self._tasks.append((task.id, task.date, end, task.title))
         self.update()
+
+    def _clamp(self, start: date, end: date) -> tuple[int, int]:
+        """把任务的起止日期裁剪到当前月内的天数范围."""
+        month_first = date(self._year, self._month, 1)
+        month_last = date(self._year, self._month, self._last_day)
+        if end < month_first or start > month_last:
+            return 0, 0  # 与当月无交集
+        s_day = start.day if start >= month_first else 1
+        e_day = end.day if end <= month_last else self._last_day
+        return s_day, e_day
 
     # ── 布局 ────────────────────────────────────────────
 
@@ -62,10 +72,12 @@ class NotionGrid(QWidget):
         task_rows = self._get_stack()
         max_stack_per_row: dict[int, int] = {}
         for tid, sd, ed, title in self._tasks:
-            s_row = (sd + self._first_wd - 1) // 7
-            if 1 <= sd <= self._last_day:
-                sr = task_rows.get(tid, 0)
-                max_stack_per_row[s_row] = max(max_stack_per_row.get(s_row, 0), sr + 1)
+            s_day, _ = self._clamp(sd, ed)
+            if s_day <= 0:
+                continue
+            s_row = (s_day + self._first_wd - 1) // 7
+            sr = task_rows.get(tid, 0)
+            max_stack_per_row[s_row] = max(max_stack_per_row.get(s_row, 0), sr + 1)
 
         # 基础行高：日期头 34px + 任务条堆叠
         base = [max(60, 34 + max_stack_per_row.get(r, 0) * 22 + 4) for r in range(6)]
@@ -106,21 +118,23 @@ class NotionGrid(QWidget):
         return day if 1 <= day <= self._last_day else 0
 
     def _get_stack(self) -> dict[int, int]:
-        """计算每个任务的堆叠行 (task_id → row_index)."""
+        """计算每个任务的堆叠行 (task_id → row_index)，跨月任务按裁剪后范围计算."""
         stack: dict[int, list[int]] = {}
         rows: dict[int, int] = {}
         for tid, sd, ed, title in sorted(self._tasks, key=lambda t: (t[1], t[2])):
+            s, e = self._clamp(sd, ed)
+            if s <= 0:
+                continue
             assigned = None
             for row_idx in range(20):
-                if not any(d in stack and row_idx in stack[d] for d in range(sd, ed + 1) if 1 <= d <= self._last_day):
+                if not any(d in stack and row_idx in stack[d] for d in range(s, e + 1)):
                     assigned = row_idx
                     break
             if assigned is None:
                 assigned = 0
             rows[tid] = assigned
-            for d in range(sd, ed + 1):
-                if 1 <= d <= self._last_day:
-                    stack.setdefault(d, []).append(assigned)
+            for d in range(s, e + 1):
+                stack.setdefault(d, []).append(assigned)
         return rows
 
     # ── 绘制 ────────────────────────────────────────────
@@ -192,13 +206,15 @@ class NotionGrid(QWidget):
                 painter.drawLine(QPointF(cx_p - 3.5, cy_p), QPointF(cx_p + 3.5, cy_p))
                 painter.drawLine(QPointF(cx_p, cy_p - 3.5), QPointF(cx_p, cy_p + 3.5))
 
-        # ── 任务条（单次绘制，错行堆叠） ──
+        # ── 任务条（单次绘制，错行堆叠，跨月裁剪） ──
         task_rows = self._get_stack()
         painter.setFont(QFont("Segoe UI", 10))
         for tid, sd, ed, title in self._tasks:
-            s_col = (sd + self._first_wd - 1) % 7
-            s_row = (sd + self._first_wd - 1) // 7
-            e_day = min(ed, self._last_day)
+            s_day, e_day = self._clamp(sd, ed)
+            if s_day <= 0:
+                continue
+            s_col = (s_day + self._first_wd - 1) % 7
+            s_row = (s_day + self._first_wd - 1) // 7
             e_col = (e_day + self._first_wd - 1) % 7
             e_row = (e_day + self._first_wd - 1) // 7
             if s_row != e_row:
@@ -265,7 +281,11 @@ class NotionGrid(QWidget):
                 self._drag_target_day = nd
                 for i, (tid, sd, ed, title) in enumerate(self._tasks):
                     if tid == self._drag_side_task_id:
-                        self._tasks[i] = (tid, sd, max(sd, nd), title)
+                        # 结束日期 = 当前月 nd 号（不早于开始日期）
+                        new_end = date(self._year, self._month, nd)
+                        if new_end < sd:
+                            new_end = sd
+                        self._tasks[i] = (tid, sd, new_end, title)
                         break
                 self.update()
             return
@@ -276,13 +296,14 @@ class NotionGrid(QWidget):
             task_rows = self._get_stack()
             _, _, (cx, cy) = self._cell_pos(self._hover_day)
             for tid, sd, ed, title in self._tasks:
-                if not (sd <= self._hover_day <= ed):
+                s_day, e_day = self._clamp(sd, ed)
+                if not (s_day <= self._hover_day <= e_day):
                     continue
                 sr = task_rows.get(tid, 0)
                 ty = cy + 34 + sr * 22
                 if ty <= y < ty + 20:
                     self._hover_task_id = tid
-                    e_day = min(ed, self._last_day)
+                    _, e_day = self._clamp(sd, ed)
                     e_col = (e_day + self._first_wd - 1) % 7
                     ecx = e_col * self._cell_w
                     bar_right = ecx + self._cell_w
@@ -318,12 +339,13 @@ class NotionGrid(QWidget):
         task_rows = self._get_stack()
         _, _, (cx, cy) = self._cell_pos(day)
         for tid, sd, ed, title in self._tasks:
-            if not (sd <= day <= ed):
+            s_day, e_day = self._clamp(sd, ed)
+            if not (s_day <= day <= e_day):
                 continue
             sr = task_rows.get(tid, 0)
             ty = cy + 34 + sr * 22
             if ty <= y < ty + 20:
-                e_day = min(ed, self._last_day)
+                _, e_day = self._clamp(sd, ed)
                 e_col = (e_day + self._first_wd - 1) % 7
                 ecx = e_col * self._cell_w
                 bar_right = ecx + self._cell_w
@@ -363,7 +385,8 @@ class NotionGrid(QWidget):
         task_rows = self._get_stack()
         on_task = False
         for tid, sd, ed, title in self._tasks:
-            if not (sd <= day <= ed):
+            s_day, e_day = self._clamp(sd, ed)
+            if not (s_day <= day <= e_day):
                 continue
             sr = task_rows.get(tid, 0)
             ty = cy + 34 + sr * 22
