@@ -1,10 +1,10 @@
-"""Notion 风格月历网格 —— 纯 QPainter，错行排列，简洁风格."""
+"""Notion 风格月历网格 —— 纯 QPainter，可变行高，任务堆叠."""
 
 import calendar
 from datetime import date
 from typing import Callable, Optional
 
-from PyQt6.QtCore import QRectF, Qt, QVariantAnimation  # type: ignore
+from PyQt6.QtCore import QPointF, QRectF, Qt, QVariantAnimation  # type: ignore
 from PyQt6.QtGui import (  # type: ignore
     QColor, QCursor, QFont, QMouseEvent, QPainter, QPainterPath, QPen,
 )
@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QWidget  # type: ignore
 
 
 class NotionGrid(QWidget):
-    """QPainter 月历网格：错行任务条 + 简洁边框风格 + 拖拽延长."""
+    """QPainter 月历网格：错行任务条 + 可变行高 + 拖拽延长."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -26,7 +26,6 @@ class NotionGrid(QWidget):
         self._drag_side_task_id: Optional[int] = None
         self._drag_target_day: Optional[int] = None
 
-        # + 按钮 hover 动画
         self._plus_anim = QVariantAnimation(self)
         self._plus_anim.setDuration(150)
         self._plus_anim.setStartValue(0.0)
@@ -58,13 +57,51 @@ class NotionGrid(QWidget):
         self._header_h = 30
         w = max(self.width(), 1)
         self._cell_w = w / 7
-        self._cell_h = max(self.height() - self._header_h, 1) / 6
+
+        # 计算每行的最大任务堆叠数 → 可变行高
+        task_rows = self._get_stack()
+        max_stack_per_row: dict[int, int] = {}
+        for tid, sd, ed, title in self._tasks:
+            s_row = (sd + self._first_wd - 1) // 7
+            if 1 <= sd <= self._last_day:
+                sr = task_rows.get(tid, 0)
+                max_stack_per_row[s_row] = max(max_stack_per_row.get(s_row, 0), sr + 1)
+
+        # 基础行高：日期头 34px + 任务条堆叠
+        base = [max(60, 34 + max_stack_per_row.get(r, 0) * 22 + 4) for r in range(6)]
+
+        # 按可用高度等比缩放（保底最小 50px）
+        avail = max(self.height() - self._header_h, 1)
+        total = sum(base)
+        scale = avail / total if total > 0 else 1
+        self._row_heights = [max(50, h * scale) for h in base]
+        # 缩放后再归一化，避免总和超出
+        total2 = sum(self._row_heights)
+        if total2 > 0 and total2 != avail:
+            self._row_heights = [h * avail / total2 for h in self._row_heights]
+
+    def _row_y(self, row: int) -> float:
+        """第 row 行的 y 坐标."""
+        return self._header_h + sum(self._row_heights[:row])
+
+    def _row_at_y(self, y: float) -> int:
+        """根据 y 坐标找到所在行."""
+        if y < self._header_h:
+            return -1
+        yy = y - self._header_h
+        for i, h in enumerate(self._row_heights):
+            if yy < h:
+                return i
+            yy -= h
+        return 5
 
     def _day_at(self, x: float, y: float) -> int:
         if y < self._header_h:
             return 0
         col = int(x / self._cell_w)
-        row = int((y - self._header_h) / self._cell_h)
+        row = self._row_at_y(y)
+        if row < 0:
+            return 0
         day = row * 7 + col + 1 - self._first_wd
         return day if 1 <= day <= self._last_day else 0
 
@@ -74,7 +111,7 @@ class NotionGrid(QWidget):
         rows: dict[int, int] = {}
         for tid, sd, ed, title in sorted(self._tasks, key=lambda t: (t[1], t[2])):
             assigned = None
-            for row_idx in range(10):
+            for row_idx in range(20):
                 if not any(d in stack and row_idx in stack[d] for d in range(sd, ed + 1) if 1 <= d <= self._last_day):
                     assigned = row_idx
                     break
@@ -92,7 +129,7 @@ class NotionGrid(QWidget):
         self._layout()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, cw, ch = self.width(), self._cell_w, self._cell_h
+        w, cw = self.width(), self._cell_w
 
         # 背景
         painter.fillRect(0, 0, w, self.height(), QColor("#1a1a2e"))
@@ -106,54 +143,57 @@ class NotionGrid(QWidget):
         painter.setPen(QPen(QColor("#2a2a40"), 1))
         painter.drawLine(0, self._header_h, w, self._header_h)
 
-        # ── 格子 + 日期 ──
+        # ── 格子 + 日期 + 加号 ──
         for r in range(6):
+            row_h = self._row_heights[r]
             for c in range(7):
                 day_num = r * 7 + c + 1 - self._first_wd
-                x, y = c * cw, self._header_h + r * ch
+                x, y = c * cw, self._row_y(r)
                 in_month = 1 <= day_num <= self._last_day
 
                 painter.setPen(QPen(QColor("#2a2a40"), 1))
-                painter.drawRect(QRectF(x, y, cw, ch))
+                painter.drawRect(QRectF(x, y, cw, row_h))
                 if not in_month:
                     continue
 
                 is_today = (self._year == self._today.year and
                             self._month == self._today.month and day_num == self._today.day)
 
-                # ── 右上角：日期 ──
+                # ── 右上角：日期（圆与文字同一矩形，保证居中） ──
                 if is_today:
+                    day_rect = QRectF(x + cw - 32, y + 4, 28, 28)
                     path = QPainterPath()
-                    path.addEllipse(x + cw - 32, y + 4, 28, 28)
+                    path.addEllipse(day_rect)
                     painter.fillPath(path, QColor("#7c5cfc"))
                     painter.setPen(QColor("#ffffff"))
                 else:
                     painter.setPen(QColor("#ffffff"))
                 painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold if is_today else QFont.Weight.Medium))
-                painter.drawText(QRectF(x + cw - 40, y + 4, 36, 28), Qt.AlignmentFlag.AlignCenter, str(day_num))
+                painter.drawText(day_rect if is_today else QRectF(x + cw - 32, y + 4, 28, 28),
+                                 Qt.AlignmentFlag.AlignCenter, str(day_num))
 
-                # ── 左上角：圆角矩形 + 按钮（Notion 风格） ──
-                if in_month:
-                    is_hover_btn = (day_num == self._hover_day)
-                    t = self._plus_progress if is_hover_btn else 0.0
-                    bg_r = int(0x2A + (0x7C - 0x2A) * t)
-                    bg_g = int(0x2A + (0x5C - 0x2A) * t)
-                    bg_b = int(0x44 + (0xFC - 0x44) * t)
-                    fg_r = int(0x80 + (0xFF - 0x80) * t)
-                    fg_g = int(0x80 + (0xFF - 0x80) * t)
-                    fg_b = int(0x98 + (0xFF - 0x98) * t)
-                    # 圆角矩形（20x18，位于左上角）
-                    rect = QRectF(x + 4, y + 7, 20, 18)
-                    path2 = QPainterPath()
-                    path2.addRoundedRect(rect, 4, 4)
-                    painter.fillPath(path2, QColor(bg_r, bg_g, bg_b))
-                    painter.setPen(QColor(fg_r, fg_g, fg_b))
-                    painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-                    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "+")
+                # ── 左上角：圆角矩形 + 按钮（线条绘制，保证像素级居中） ──
+                is_hover_btn = (day_num == self._hover_day)
+                t = self._plus_progress if is_hover_btn else 0.0
+                bg_r = int(0x2A + (0x7C - 0x2A) * t)
+                bg_g = int(0x2A + (0x5C - 0x2A) * t)
+                bg_b = int(0x44 + (0xFC - 0x44) * t)
+                fg_r = int(0x80 + (0xFF - 0x80) * t)
+                fg_g = int(0x80 + (0xFF - 0x80) * t)
+                fg_b = int(0x98 + (0xFF - 0x98) * t)
+                plus_rect = QRectF(x + 4, y + 7, 20, 18)
+                path2 = QPainterPath()
+                path2.addRoundedRect(plus_rect, 4, 4)
+                painter.fillPath(path2, QColor(bg_r, bg_g, bg_b))
+                # + 号用两条线段绘制，中心对齐
+                painter.setPen(QPen(QColor(fg_r, fg_g, fg_b), 2))
+                cx_p = plus_rect.center().x()
+                cy_p = plus_rect.center().y()
+                painter.drawLine(QPointF(cx_p - 3.5, cy_p), QPointF(cx_p + 3.5, cy_p))
+                painter.drawLine(QPointF(cx_p, cy_p - 3.5), QPointF(cx_p, cy_p + 3.5))
 
-        # ── 任务条（单次绘制，错行堆叠，简洁边框） ──
+        # ── 任务条（单次绘制，错行堆叠） ──
         task_rows = self._get_stack()
-
         painter.setFont(QFont("Segoe UI", 10))
         for tid, sd, ed, title in self._tasks:
             s_col = (sd + self._first_wd - 1) % 7
@@ -166,31 +206,26 @@ class NotionGrid(QWidget):
 
             stack_row = task_rows.get(tid, 0)
             bx = s_col * cw + 2
-            by = self._header_h + s_row * ch + 34 + stack_row * 22
+            by = self._row_y(s_row) + 34 + stack_row * 22
             bw = (e_col - s_col + 1) * cw - 4
             bh = 19
 
             is_hover = (tid == self._hover_task_id)
-
-            # 背景 + 边框
             painter.setPen(QPen(QColor("#7c5cfc" if is_hover else "#3a3a50"), 1))
             painter.setBrush(QColor("#25253a"))
             path = QPainterPath()
             path.addRoundedRect(bx, by, bw, bh, 3, 3)
             painter.drawPath(path)
 
-            # 左侧小竖条
             painter.setPen(Qt.PenStyle.NoPen)
             painter.fillRect(QRectF(bx + 1, by + 2, 3, bh - 4), QColor("#7c5cfc"))
 
-            # 文字
             painter.setPen(QColor("#e0e0e8"))
             painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold if is_hover else QFont.Weight.Normal))
             text = title[:int(bw / 7.5)] + ".." if len(title) > int(bw / 7.5) else title
             painter.drawText(QRectF(bx + 8, by, bw - 14, bh),
                              Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
 
-            # 拖拽手柄
             if is_hover and bw > 40:
                 painter.fillRect(QRectF(bx + bw - 10, by + 2, 6, bh - 4), QColor(255, 255, 255, 60))
 
@@ -200,7 +235,7 @@ class NotionGrid(QWidget):
         """返回 (row, col) 和 (x, y)."""
         idx = day_num + self._first_wd - 1
         row, col = idx // 7, idx % 7
-        return row, col, (col * self._cell_w, self._header_h + row * self._cell_h)
+        return row, col, (col * self._cell_w, self._row_y(row))
 
     # ── 鼠标 ────────────────────────────────────────────
 
@@ -212,7 +247,6 @@ class NotionGrid(QWidget):
         x, y = int(event.position().x()), int(event.position().y())
         new_day = self._day_at(x, y)
         if new_day != self._hover_day:
-            # 开始 hover 动画
             self._plus_anim.stop()
             self._plus_progress = 1.0 if new_day > 0 else 0.0
             if new_day > 0:
@@ -236,7 +270,6 @@ class NotionGrid(QWidget):
                 self.update()
             return
 
-        # hover 任务条
         old_ht = self._hover_task_id
         self._hover_task_id = None
         if self._hover_day > 0:
@@ -249,7 +282,6 @@ class NotionGrid(QWidget):
                 ty = cy + 34 + sr * 22
                 if ty <= y < ty + 20:
                     self._hover_task_id = tid
-                    # 检测右边缘
                     e_day = min(ed, self._last_day)
                     e_col = (e_day + self._first_wd - 1) % 7
                     ecx = e_col * self._cell_w
@@ -273,9 +305,9 @@ class NotionGrid(QWidget):
 
         # + 按钮（左上角圆角矩形）
         col = int(x / self._cell_w)
-        row = int((y - self._header_h) / self._cell_h) if y >= self._header_h else -1
+        row = self._row_at_y(y)
         cx = col * self._cell_w
-        cy = self._header_h + row * self._cell_h
+        cy = self._row_y(row) if row >= 0 else 0
         if (cx + 4 <= x <= cx + 24 and
                 cy + 7 <= y <= cy + 25 and self._hover_day == day):
             if self.on_cell_add:
@@ -318,16 +350,15 @@ class NotionGrid(QWidget):
         if not (day > 0 and self.on_cell_add):
             return
 
-        # 跳过 + 按钮区域（防止 press + double-click 双重触发）
+        # 跳过 + 按钮区域
         col = int(x / self._cell_w)
-        row = int((y - self._header_h) / self._cell_h) if y >= self._header_h else -1
+        row = self._row_at_y(y)
         cx2 = col * self._cell_w
-        cy2 = self._header_h + row * self._cell_h
+        cy2 = self._row_y(row) if row >= 0 else 0
         if (cx2 + 4 <= x <= cx2 + 24 and
                 cy2 + 7 <= y <= cy2 + 25):
             return
 
-        # 检查是否点击在任务条上
         _, _, (cx, cy) = self._cell_pos(day)
         task_rows = self._get_stack()
         on_task = False
@@ -346,7 +377,6 @@ class NotionGrid(QWidget):
         self._hover_day = 0
         self._hover_task_id = None
         self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-        # 淡出动画
         if self._plus_progress > 0:
             self._plus_anim.stop()
             self._plus_anim.setStartValue(self._plus_progress)
