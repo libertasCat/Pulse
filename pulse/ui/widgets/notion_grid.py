@@ -206,44 +206,58 @@ class NotionGrid(QWidget):
                 painter.drawLine(QPointF(cx_p - 3.5, cy_p), QPointF(cx_p + 3.5, cy_p))
                 painter.drawLine(QPointF(cx_p, cy_p - 3.5), QPointF(cx_p, cy_p + 3.5))
 
-        # ── 任务条（单次绘制，错行堆叠，跨月裁剪） ──
+        # ── 任务条（按行分段绘制，跨行任务每行都显示） ──
         task_rows = self._get_stack()
         painter.setFont(QFont("Segoe UI", 10))
         for tid, sd, ed, title in self._tasks:
             s_day, e_day = self._clamp(sd, ed)
             if s_day <= 0:
                 continue
-            s_col = (s_day + self._first_wd - 1) % 7
-            s_row = (s_day + self._first_wd - 1) // 7
-            e_col = (e_day + self._first_wd - 1) % 7
-            e_row = (e_day + self._first_wd - 1) // 7
-            if s_row != e_row:
-                e_col = 6
 
             stack_row = task_rows.get(tid, 0)
-            bx = s_col * cw + 2
-            by = self._row_y(s_row) + 34 + stack_row * 22
-            bw = (e_col - s_col + 1) * cw - 4
-            bh = 19
-
             is_hover = (tid == self._hover_task_id)
-            painter.setPen(QPen(QColor("#7c5cfc" if is_hover else "#3a3a50"), 1))
-            painter.setBrush(QColor("#25253a"))
-            path = QPainterPath()
-            path.addRoundedRect(bx, by, bw, bh, 3, 3)
-            painter.drawPath(path)
+            pen_color = "#7c5cfc" if is_hover else "#3a3a50"
+            font_weight = QFont.Weight.Bold if is_hover else QFont.Weight.Normal
 
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.fillRect(QRectF(bx + 1, by + 2, 3, bh - 4), QColor("#7c5cfc"))
+            # 拆分为每行的段：[(row, seg_start_day, seg_end_day)]
+            segments = []
+            cur_row = (s_day + self._first_wd - 1) // 7
+            cur_day = s_day
+            while cur_day <= e_day:
+                row_last_idx = (cur_row + 1) * 7 - 1
+                row_last_day = row_last_idx + 1 - self._first_wd
+                seg_end = min(e_day, row_last_day)
+                segments.append((cur_row, cur_day, seg_end))
+                cur_day = seg_end + 1
+                cur_row += 1
 
-            painter.setPen(QColor("#e0e0e8"))
-            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold if is_hover else QFont.Weight.Normal))
-            text = title[:int(bw / 7.5)] + ".." if len(title) > int(bw / 7.5) else title
-            painter.drawText(QRectF(bx + 8, by, bw - 14, bh),
-                             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+            for seg_idx, (seg_row, seg_start, seg_end) in enumerate(segments):
+                s_col = (seg_start + self._first_wd - 1) % 7
+                e_col = (seg_end + self._first_wd - 1) % 7
+                bx = s_col * cw + 2
+                by = self._row_y(seg_row) + 34 + stack_row * 22
+                bw = (e_col - s_col + 1) * cw - 4
+                bh = 19
 
-            if is_hover and bw > 40:
-                painter.fillRect(QRectF(bx + bw - 10, by + 2, 6, bh - 4), QColor(255, 255, 255, 60))
+                painter.setPen(QPen(QColor(pen_color), 1))
+                painter.setBrush(QColor("#25253a"))
+                path = QPainterPath()
+                path.addRoundedRect(bx, by, bw, bh, 3, 3)
+                painter.drawPath(path)
+
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.fillRect(QRectF(bx + 1, by + 2, 3, bh - 4), QColor("#7c5cfc"))
+
+                # 标题每段都画（跨行时每行第一格显示任务名，Notion 风格）
+                painter.setPen(QColor("#e0e0e8"))
+                painter.setFont(QFont("Segoe UI", 10, font_weight))
+                text = title[:int(bw / 7.5)] + ".." if len(title) > int(bw / 7.5) else title
+                painter.drawText(QRectF(bx + 8, by, bw - 14, bh),
+                                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+
+                # 拖拽手柄只画在最后一段
+                if is_hover and bw > 40 and seg_idx == len(segments) - 1:
+                    painter.fillRect(QRectF(bx + bw - 10, by + 2, 6, bh - 4), QColor(255, 255, 255, 60))
 
         painter.end()
 
