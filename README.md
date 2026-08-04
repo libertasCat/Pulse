@@ -2,7 +2,7 @@
 
 > 自动追踪你的电脑使用时间，AI 帮你分类、分析、给建议，日历帮你规划每一天。
 
-![Version](https://img.shields.io/badge/version-0.2.0-purple)
+![Version](https://img.shields.io/badge/version-0.3.0-purple)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -30,8 +30,9 @@
 
 ### 📅 Notion 风格日历
 - **月历网格**：日期格 + 任务条，支持多日任务
-- **拖拽延长**：拖动任务条右边缘延长任务日期
-- **任务详情**：多文本字段 + 评论区
+- **跨月/跨行任务**：跨月任务在相邻月份都显示，跨行任务每行分段绘制并带标题
+- **拖拽调整**：右边缘拖延长结束日期，左边缘拖移动开始日期
+- **任务详情**：多文本字段 + 评论区 + 普通/定时提醒
 - **字段自适应**：文本框随内容自动增高（Notion 同款体验）
 
 ### 🧠 AI 行为分析
@@ -52,7 +53,7 @@
 
 前往 [Releases 页面](https://github.com/libertasCat/Pulse/releases) 下载：
 
-- **`Pulse_v0.2.0.zip`** — 完整版，解压后运行 `Pulse.exe`
+- **`Pulse_v0.3.0.zip`** — 完整版，解压后运行 `Pulse.exe`
 
 > ⚠️ 首次运行 Windows SmartScreen 可能提示"已保护你的电脑"，
 > 点击 **更多信息 → 仍要运行** 即可（未签名应用的正常现象）。

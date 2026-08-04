@@ -25,6 +25,9 @@ class NotionGrid(QWidget):
         self._hover_task_id: Optional[int] = None
         self._drag_side_task_id: Optional[int] = None
         self._drag_target_day: Optional[int] = None
+        # 左边拖拽（移动开始日期）
+        self._drag_left_task_id: Optional[int] = None
+        self._drag_left_target_day: Optional[int] = None
 
         self._plus_anim = QVariantAnimation(self)
         self._plus_anim.setDuration(150)
@@ -35,7 +38,8 @@ class NotionGrid(QWidget):
 
         self.on_task_click: Optional[Callable[[int], None]] = None
         self.on_cell_add: Optional[Callable[[int, int, int], None]] = None
-        self.on_task_drag: Optional[Callable[[int, int], None]] = None
+        self.on_task_drag: Optional[Callable[[int, int], None]] = None          # 右拉：更新结束日期
+        self.on_task_left_drag: Optional[Callable[[int, int], None]] = None     # 左拉：更新开始日期
 
     # ── 数据 ────────────────────────────────────────────
 
@@ -58,6 +62,10 @@ class NotionGrid(QWidget):
         s_day = start.day if start >= month_first else 1
         e_day = end.day if end <= month_last else self._last_day
         return s_day, e_day
+
+    def _task_left_draggable(self, start: date) -> bool:
+        """任务左边缘是否可拖拽（仅当开始日期在当月内）. """
+        return start.year == self._year and start.month == self._month
 
     # ── 布局 ────────────────────────────────────────────
 
@@ -255,7 +263,10 @@ class NotionGrid(QWidget):
                 painter.drawText(QRectF(bx + 8, by, bw - 14, bh),
                                  Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
 
-                # 拖拽手柄只画在最后一段
+                # 拖拽手柄：左边缘（第一段且开始日期在当月内）
+                if is_hover and bw > 40 and seg_idx == 0 and self._task_left_draggable(sd):
+                    painter.fillRect(QRectF(bx + 4, by + 2, 6, bh - 4), QColor(255, 255, 255, 60))
+                # 拖拽手柄：右边缘（最后一段）
                 if is_hover and bw > 40 and seg_idx == len(segments) - 1:
                     painter.fillRect(QRectF(bx + bw - 10, by + 2, 6, bh - 4), QColor(255, 255, 255, 60))
 
@@ -289,17 +300,32 @@ class NotionGrid(QWidget):
                 self._plus_anim.start()
         self._hover_day = new_day
 
+        # 右拉拖拽（延长结束日期）
         if self._drag_side_task_id is not None:
             nd = self._hover_day
             if nd > 0 and nd != self._drag_target_day:
                 self._drag_target_day = nd
                 for i, (tid, sd, ed, title) in enumerate(self._tasks):
                     if tid == self._drag_side_task_id:
-                        # 结束日期 = 当前月 nd 号（不早于开始日期）
                         new_end = date(self._year, self._month, nd)
                         if new_end < sd:
                             new_end = sd
                         self._tasks[i] = (tid, sd, new_end, title)
+                        break
+                self.update()
+            return
+
+        # 左拉拖拽（移动开始日期）
+        if self._drag_left_task_id is not None:
+            nd = self._hover_day
+            if nd > 0 and nd != self._drag_left_target_day:
+                self._drag_left_target_day = nd
+                for i, (tid, sd, ed, title) in enumerate(self._tasks):
+                    if tid == self._drag_left_task_id:
+                        new_start = date(self._year, self._month, nd)
+                        if new_start > ed:
+                            new_start = ed
+                        self._tasks[i] = (tid, new_start, ed, title)
                         break
                 self.update()
             return
@@ -317,11 +343,19 @@ class NotionGrid(QWidget):
                 ty = cy + 34 + sr * 22
                 if ty <= y < ty + 20:
                     self._hover_task_id = tid
-                    _, e_day = self._clamp(sd, ed)
-                    e_col = (e_day + self._first_wd - 1) % 7
+                    # 右边缘检测
+                    _, e_day_c = self._clamp(sd, ed)
+                    e_col = (e_day_c + self._first_wd - 1) % 7
                     ecx = e_col * self._cell_w
                     bar_right = ecx + self._cell_w
-                    if abs(x - bar_right) < 12:
+                    # 左边缘检测（仅开始日期在当月内的任务）
+                    left_draggable = self._task_left_draggable(sd)
+                    s_day_c, _ = self._clamp(sd, ed)
+                    s_col = (s_day_c + self._first_wd - 1) % 7
+                    bar_left = s_col * self._cell_w
+                    if left_draggable and abs(x - bar_left) < 12:
+                        self.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
+                    elif abs(x - bar_right) < 12:
                         self.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
                     else:
                         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -359,14 +393,25 @@ class NotionGrid(QWidget):
             sr = task_rows.get(tid, 0)
             ty = cy + 34 + sr * 22
             if ty <= y < ty + 20:
-                _, e_day = self._clamp(sd, ed)
-                e_col = (e_day + self._first_wd - 1) % 7
+                _, e_day_c = self._clamp(sd, ed)
+                e_col = (e_day_c + self._first_wd - 1) % 7
                 ecx = e_col * self._cell_w
                 bar_right = ecx + self._cell_w
+
+                # 右边缘 → 右拉
                 if abs(x - bar_right) < 12:
                     self._drag_side_task_id = tid
                     self._drag_target_day = e_day
                     return
+                # 左边缘 → 左拉（仅开始日期在当月内）
+                if self._task_left_draggable(sd):
+                    s_day_c, _ = self._clamp(sd, ed)
+                    s_col = (s_day_c + self._first_wd - 1) % 7
+                    bar_left = s_col * self._cell_w
+                    if abs(x - bar_left) < 12:
+                        self._drag_left_task_id = tid
+                        self._drag_left_target_day = s_day_c
+                        return
                 if self.on_task_click:
                     self.on_task_click(tid)
                 return
@@ -377,6 +422,12 @@ class NotionGrid(QWidget):
                 self.on_task_drag(self._drag_side_task_id, self._drag_target_day)
             self._drag_side_task_id = None
             self._drag_target_day = None
+            self.update()
+        if self._drag_left_task_id is not None and self._drag_left_target_day is not None:
+            if self.on_task_left_drag:
+                self.on_task_left_drag(self._drag_left_task_id, self._drag_left_target_day)
+            self._drag_left_task_id = None
+            self._drag_left_target_day = None
             self.update()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):

@@ -37,6 +37,7 @@ class CalendarPage(QWidget):
         self._grid.on_task_click = self._open_detail
         self._grid.on_cell_add = self._on_cell_add
         self._grid.on_task_drag = self._on_task_drag
+        self._grid.on_task_left_drag = self._on_task_left_drag
         root.addWidget(self._grid, stretch=1)
 
         # ── 弹出创建 ──
@@ -158,4 +159,21 @@ class CalendarPage(QWidget):
         with self._repo.session() as s:
             from pulse.db.models import CalendarTask
             s.query(CalendarTask).filter(CalendarTask.id == task_id).update({"end_date": end_date})
+        self._refresh_grid()
+
+    def _on_task_left_drag(self, task_id: int, new_start_day: int):
+        """左拉移动任务开始日期."""
+        if not self._repo:
+            return
+        start_date = date(self._view_year, self._view_month, new_start_day)
+        with self._repo.session() as s:
+            from pulse.db.models import CalendarTask
+            task = s.query(CalendarTask).filter(CalendarTask.id == task_id).first()
+            if not task:
+                return
+            # 开始日期不能超过结束日期
+            end = task.end_date or task.date
+            if start_date > end:
+                start_date = end
+            s.query(CalendarTask).filter(CalendarTask.id == task_id).update({"date": start_date})
         self._refresh_grid()
