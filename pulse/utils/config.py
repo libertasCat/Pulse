@@ -65,10 +65,26 @@ class TrackerConfig:
 
 
 @dataclass
+class EmailConfig:
+    """邮件提醒配置（163 SMTP）. """
+    sender: str = ""
+    auth_code: str = ""
+    recipient: str = ""
+    enabled: bool = False
+
+    def to_dict(self):
+        d = asdict(self)
+        if d["auth_code"]:
+            d["auth_code"] = "***"
+        return d
+
+
+@dataclass
 class AppConfig:
     """应用全局配置."""
     tracker: TrackerConfig = field(default_factory=TrackerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    email: EmailConfig = field(default_factory=EmailConfig)
     excluded_processes: list = field(default_factory=list)
     auto_start: bool = False
     minimize_to_tray: bool = True
@@ -117,6 +133,7 @@ class ConfigManager:
         return AppConfig(
             tracker=TrackerConfig(**data.get("tracker", {})),
             llm=LLMConfig(**{k: v for k, v in data.get("llm", {}).items() if k in LLMConfig.__dataclass_fields__}),
+            email=EmailConfig(**{k: v for k, v in data.get("email", {}).items() if k in EmailConfig.__dataclass_fields__}),
             excluded_processes=data.get("excluded_processes", []),
             auto_start=data.get("auto_start", False),
             minimize_to_tray=data.get("minimize_to_tray", True),
@@ -129,6 +146,7 @@ class ConfigManager:
         return {
             "tracker": asdict(config.tracker),
             "llm": asdict(config.llm),
+            "email": asdict(config.email),
             "excluded_processes": config.excluded_processes,
             "auto_start": config.auto_start,
             "minimize_to_tray": config.minimize_to_tray,

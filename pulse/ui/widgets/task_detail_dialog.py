@@ -5,12 +5,13 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal  # type: ignore
 from PyQt6.QtWidgets import (  # type: ignore
-    QDialog, QFrame, QHBoxLayout, QLabel,
+    QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QScrollArea, QTextEdit,
-    QVBoxLayout, QWidget,
+    QTimeEdit, QVBoxLayout, QWidget,
 )
 
 from pulse.db.repository import Repository
+from pulse.ui.widgets.styled_combo import StyledCombo
 
 
 class _DatePickerButton(QPushButton):
@@ -138,6 +139,43 @@ class TaskDetailDialog(QDialog):
         date_row.addWidget(self._end_date)
         date_row.addStretch()
         inner_lo.addLayout(date_row)
+
+        # ── 提醒（普通 / 定时） ──
+        remind_row = QHBoxLayout()
+        remind_row.setSpacing(8)
+        self._remind_type = StyledCombo()
+        self._remind_type.addItems(["普通任务", "定时提醒"])
+        self._remind_type.setFixedWidth(100)
+        self._remind_type.setStyleSheet(
+            "QComboBox { padding: 4px 8px; border-radius: 6px; background: #25253a; "
+            "color: #e0e0e8; border: 1px solid #3a3a50; font-size: 12px; }"
+        )
+        self._remind_type.currentIndexChanged.connect(self._on_remind_type_changed)
+
+        self._remind_date = self._make_date_edit(self._task.date)
+        self._remind_time = QTimeEdit()
+        self._remind_time.setDisplayFormat("HH:mm")
+        self._remind_time.setStyleSheet(
+            "QTimeEdit { padding: 4px 8px; border-radius: 6px; background: #25253a; "
+            "color: #e0e0e8; border: 1px solid #3a3a50; font-size: 12px; }"
+        )
+        if self._task.remind_at:
+            self._remind_type.setCurrentIndex(1)
+            self._remind_date.setDate(self._task.remind_at.date())
+            self._remind_time.setTime(self._task.remind_at.time())
+        else:
+            self._remind_type.setCurrentIndex(0)
+
+        # 联动保存：日期/时间变化时更新提醒
+        self._remind_date.dateChanged.connect(self._save_reminder)
+        self._remind_time.timeChanged.connect(self._save_reminder)
+
+        remind_row.addWidget(self._remind_type)
+        remind_row.addWidget(self._remind_date)
+        remind_row.addWidget(self._remind_time)
+        remind_row.addStretch()
+        inner_lo.addLayout(remind_row)
+        self._on_remind_type_changed(self._remind_type.currentIndex())
 
         # 删除
         del_btn = QPushButton("删除此任务")
@@ -330,6 +368,27 @@ class TaskDetailDialog(QDialog):
         with self._repo.session() as s:
             from pulse.db.models import CalendarTask
             s.query(CalendarTask).filter(CalendarTask.id == self._task_id).update({"end_date": end})
+
+    # ── 定时提醒 ────────────────────────────────────────
+
+    def _on_remind_type_changed(self, idx: int):
+        """普通任务 / 定时提醒 切换时显示或隐藏时间选择."""
+        is_remind = idx == 1
+        self._remind_date.setVisible(is_remind)
+        self._remind_time.setVisible(is_remind)
+        if is_remind:
+            self._save_reminder()
+        else:
+            self._repo.set_task_reminder(self._task_id, None)
+
+    def _save_reminder(self):
+        """保存提醒时间（本地时间）. """
+        if not self._task_id or not self._repo:
+            return
+        if self._remind_type.currentIndex() != 1:
+            return
+        remind_at = datetime.combine(self._remind_date.date(), self._remind_time.time().toPyTime())
+        self._repo.set_task_reminder(self._task_id, remind_at)
 
     def _add_field(self):
         f = self._repo.add_task_field(self._task_id)

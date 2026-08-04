@@ -49,6 +49,11 @@ class Repository:
                 s.execute(text("ALTER TABLE calendar_tasks ADD COLUMN end_date DATE"))
                 logger.info("迁移: calendar_tasks 添加 end_date 列")
 
+            if cal_cols and "remind_at" not in cal_cols:
+                s.execute(text("ALTER TABLE calendar_tasks ADD COLUMN remind_at DATETIME"))
+                s.execute(text("ALTER TABLE calendar_tasks ADD COLUMN reminded BOOLEAN DEFAULT 0"))
+                logger.info("迁移: calendar_tasks 添加 remind_at / reminded 列")
+
 
     def _seed_default_categories(self) -> None:
         with self.session() as session:
@@ -422,3 +427,32 @@ class Repository:
     def get_comments(self, task_id: int) -> List[CalendarComment]:
         with self.session() as s:
             return s.query(CalendarComment).filter(CalendarComment.task_id == task_id).order_by(CalendarComment.created_at).all()
+
+    # ─── 定时提醒 ───────────────────────────────────────────
+
+    def set_task_reminder(self, task_id: int, remind_at: Optional[datetime]) -> bool:
+        """设置/清除任务的定时提醒时间."""
+        with self.session() as s:
+            count = s.query(CalendarTask).filter(CalendarTask.id == task_id).update({
+                "remind_at": remind_at,
+                "reminded": False,
+            })
+            return count > 0
+
+    def get_due_reminders(self) -> List[CalendarTask]:
+        """获取所有已到提醒时间但尚未发送邮件的任务."""
+        now = datetime.now()
+        with self.session() as s:
+            return (
+                s.query(CalendarTask)
+                .filter(CalendarTask.remind_at.isnot(None),
+                        CalendarTask.remind_at <= now,
+                        CalendarTask.reminded == False)
+                .all()
+            )
+
+    def mark_task_reminded(self, task_id: int) -> bool:
+        """标记任务提醒邮件已发送."""
+        with self.session() as s:
+            count = s.query(CalendarTask).filter(CalendarTask.id == task_id).update({"reminded": True})
+            return count > 0

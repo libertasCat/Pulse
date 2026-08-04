@@ -152,6 +152,12 @@ def run_gui() -> None:
         _classify_timer.timeout.connect(_classifier.auto_classify)
         _classify_timer.start(3600000)  # 每小时
 
+    # 任务定时提醒（每分钟检查一次到期任务并发送邮件）
+    _remind_timer = _QTimer()
+    _remind_timer.timeout.connect(lambda: _check_reminders(_repo, _config_mgr))
+    _remind_timer.start(60000)  # 每分钟
+    _check_reminders(_repo, _config_mgr)  # 启动时立即检查
+
     # 主题
     theme = ThemeManager.instance()
     mode_str = _config_mgr.config.theme
@@ -183,6 +189,39 @@ def run_gui() -> None:
 
 
 # ── 公共方法 ─────────────────────────────────────────────
+
+
+def _check_reminders(repo: Repository, config_mgr: ConfigManager) -> None:
+    """检查到期的定时任务并发送提醒邮件."""
+    email_cfg = config_mgr.config.email
+    if not email_cfg.enabled or not email_cfg.sender:
+        return
+    try:
+        from pulse.services.email_sender import EmailConfig, send_email
+        due = repo.get_due_reminders()
+        if not due:
+            return
+        cfg = EmailConfig(
+            sender=email_cfg.sender,
+            auth_code=email_cfg.auth_code,
+            recipient=email_cfg.recipient,
+        )
+        for task in due:
+            subject = f"【Pulse 提醒】{task.title}"
+            content = (
+                f"任务：{task.title}\n"
+                f"日期：{task.date.isoformat()}"
+                + (f" ~ {task.end_date.isoformat()}" if task.end_date else "")
+                + "\n\n这是来自 Pulse 的定时任务提醒。"
+            )
+            ok, err = send_email(cfg, subject, content)
+            if ok:
+                repo.mark_task_reminded(task.id)
+                logger.info("已发送任务提醒: %s", task.title)
+            else:
+                logger.warning("任务提醒发送失败 [%s]: %s", task.title, err)
+    except Exception as e:
+        logger.error("提醒检查异常: %s", e)
 
 
 def _print_banner() -> None:

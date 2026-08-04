@@ -11,31 +11,9 @@ from PyQt6.QtWidgets import (
 
 from pulse.db.repository import Repository
 from pulse.ui.theme import ThemeManager, ThemeMode
+from pulse.ui.widgets.styled_combo import StyledCombo
 from pulse.utils.auto_start import is_auto_start_enabled, set_auto_start
 from pulse.utils.config import ConfigManager, LLMConfig
-
-
-class StyledCombo(QComboBox):
-    """QComboBox 子类 —— 弹出时强制注入暗色样式."""
-
-    def showPopup(self):
-        self.view().window().setStyleSheet("""
-            QAbstractItemView {
-                background-color: #000000;
-                color: #ffffff;
-                border: 1px solid #5a5a7a;
-                outline: none;
-            }
-            QAbstractItemView::item {
-                padding: 6px 10px;
-                color: #ffffff;
-            }
-            QAbstractItemView::item:selected {
-                background-color: #7c5cfc;
-                color: #ffffff;
-            }
-        """)
-        super().showPopup()
 
 
 class SettingsPage(QWidget):
@@ -63,6 +41,7 @@ class SettingsPage(QWidget):
         self._build_theme_section()
         self._build_tracker_section()
         self._build_llm_section()
+        self._build_email_section()
         self._build_auto_start_section()
         self._build_cleanup_section()
         self._build_about_section()
@@ -169,6 +148,114 @@ class SettingsPage(QWidget):
         info = QLabel("配置后将在分类页面提供「AI 自动分类」功能，基于 DeepSeek API")
         info.setStyleSheet("color: #606080; font-size: 11px;")
         self._layout.addWidget(info)
+
+    def _build_email_section(self):
+        """邮件提醒配置（163 SMTP）. """
+        self._add_section("邮件提醒")
+        email = self._config_mgr.config.email
+
+        # 发送方邮箱
+        row1 = QHBoxLayout()
+        lbl1 = QLabel("发送邮箱")
+        lbl1.setFixedWidth(140)
+        self._email_sender = QLineEdit()
+        self._email_sender.setPlaceholderText("xxx@163.com")
+        self._email_sender.setFixedWidth(300)
+        self._email_sender.setText(email.sender)
+        row1.addWidget(lbl1)
+        row1.addWidget(self._email_sender)
+        row1.addStretch()
+        self._layout.addLayout(row1)
+
+        # SMTP 授权码
+        row2 = QHBoxLayout()
+        lbl2 = QLabel("SMTP 授权码")
+        lbl2.setFixedWidth(140)
+        self._email_auth = QLineEdit()
+        self._email_auth.setPlaceholderText("网易邮箱设置 → 客户端协议 → 开启 SMTP 生成")
+        self._email_auth.setEchoMode(QLineEdit.EchoMode.Password)
+        self._email_auth.setFixedWidth(300)
+        self._email_auth.setText(email.auth_code)
+        row2.addWidget(lbl2)
+        row2.addWidget(self._email_auth)
+        row2.addStretch()
+        self._layout.addLayout(row2)
+
+        # 接收邮箱
+        row3 = QHBoxLayout()
+        lbl3 = QLabel("接收邮箱")
+        lbl3.setFixedWidth(140)
+        self._email_recipient = QLineEdit()
+        self._email_recipient.setPlaceholderText("接收提醒的邮箱")
+        self._email_recipient.setFixedWidth(300)
+        self._email_recipient.setText(email.recipient)
+        row3.addWidget(lbl3)
+        row3.addWidget(self._email_recipient)
+        row3.addStretch()
+        self._layout.addLayout(row3)
+
+        # 按钮
+        btn_row = QHBoxLayout()
+        self._email_save_btn = QPushButton("保存")
+        self._email_save_btn.setStyleSheet(
+            "QPushButton { background: #7c5cfc; border: none; border-radius: 4px; "
+            "padding: 8px 20px; color: #fff; font-weight: 600; }"
+            "QPushButton:hover { background: #6a4acc; }"
+        )
+        self._email_save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._email_save_btn.clicked.connect(self._save_email_config)
+        self._email_test_btn = QPushButton("发送测试邮件")
+        self._email_test_btn.setStyleSheet(
+            "QPushButton { background: #4a4a6a; border: none; border-radius: 4px; "
+            "padding: 8px 20px; color: #fff; font-weight: 600; }"
+            "QPushButton:hover { background: #5a5a7a; }"
+        )
+        self._email_test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._email_test_btn.clicked.connect(self._test_email)
+        btn_row.addWidget(self._email_save_btn)
+        btn_row.addWidget(self._email_test_btn)
+        btn_row.addStretch()
+        self._layout.addLayout(btn_row)
+
+        self._email_status = QLabel("")
+        self._email_status.setStyleSheet("color: #606080; font-size: 11px;")
+        self._email_status.setWordWrap(True)
+        self._layout.addWidget(self._email_status)
+
+    def _save_email_config(self):
+        """保存邮件配置并校验合法性."""
+        from pulse.services.email_sender import is_valid_email
+        cfg = self._config_mgr.config.email
+        cfg.sender = self._email_sender.text().strip()
+        cfg.auth_code = self._email_auth.text().strip()
+        cfg.recipient = self._email_recipient.text().strip()
+        cfg.enabled = bool(cfg.sender and cfg.auth_code and cfg.recipient)
+
+        if not is_valid_email(cfg.sender):
+            self._email_status.setText("⚠️ 发送邮箱格式不合法")
+            return
+        if not is_valid_email(cfg.recipient):
+            self._email_status.setText("⚠️ 接收邮箱格式不合法")
+            return
+        if not cfg.auth_code:
+            self._email_status.setText("⚠️ 请填写 SMTP 授权码")
+            return
+        self._config_mgr.save()
+        self._email_status.setText("✓ 邮件配置已保存")
+
+    def _test_email(self):
+        """发送测试邮件验证配置."""
+        from pulse.services.email_sender import EmailConfig, send_email
+        cfg = EmailConfig(
+            sender=self._email_sender.text().strip(),
+            auth_code=self._email_auth.text().strip(),
+            recipient=self._email_recipient.text().strip(),
+        )
+        ok, err = send_email(cfg, "Pulse 测试邮件", "这是一封来自 Pulse 的测试邮件，配置正常！")
+        if ok:
+            self._email_status.setText("✓ 测试邮件已发送，请查收")
+        else:
+            self._email_status.setText(f"✗ {err}")
 
     def _build_auto_start_section(self):
         self._add_section("开机自启")

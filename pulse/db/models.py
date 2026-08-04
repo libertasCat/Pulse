@@ -79,6 +79,8 @@ class CalendarTask(Base):
     date = Column(Date, nullable=False, index=True, comment="开始日期")
     end_date = Column(Date, nullable=True, index=True, comment="结束日期（多日任务）")
     title = Column(String(256), nullable=False, default="新任务", comment="任务标题")
+    remind_at = Column(DateTime, nullable=True, comment="定时提醒时间（None=普通任务）")
+    reminded = Column(Boolean, default=False, comment="提醒邮件是否已发送")
     sort_order = Column(Integer, default=0, comment="排序")
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
