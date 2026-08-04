@@ -2,7 +2,7 @@
 
 > 自动追踪你的电脑使用时间，AI 帮你分类、分析、给建议，日历帮你规划每一天。
 
-![Version](https://img.shields.io/badge/version-0.1.0-purple)
+![Version](https://img.shields.io/badge/version-0.2.0-purple)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -52,7 +52,7 @@
 
 前往 [Releases 页面](https://github.com/libertasCat/Pulse/releases) 下载：
 
-- **`Pulse_v0.1.0.zip`** — 完整版，解压后运行 `Pulse.exe`
+- **`Pulse_v0.2.0.zip`** — 完整版，解压后运行 `Pulse.exe`
 
 > ⚠️ 首次运行 Windows SmartScreen 可能提示"已保护你的电脑"，
 > 点击 **更多信息 → 仍要运行** 即可（未签名应用的正常现象）。

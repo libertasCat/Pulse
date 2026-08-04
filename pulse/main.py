@@ -8,6 +8,7 @@ import time
 from datetime import date
 from typing import Optional
 
+from pulse import __version__
 from pulse.core.tracker import AppTracker, TrackerConfig
 from pulse.db.repository import Repository
 from pulse.ui.theme import ThemeManager, ThemeMode
@@ -226,7 +227,7 @@ def _check_reminders(repo: Repository, config_mgr: ConfigManager) -> None:
 
 def _print_banner() -> None:
     logger.info("=" * 50)
-    logger.info("Pulse v%s  启动", "0.1.0")
+    logger.info("Pulse v%s  启动", __version__)
     logger.info("数据目录: %s", DB_PATH.parent)
     logger.info("=" * 50)
 

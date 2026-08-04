@@ -297,7 +297,8 @@ class SettingsPage(QWidget):
 
     def _build_about_section(self):
         self._add_section("关于")
-        about = QLabel("Pulse v0.1.0\n个性化智能桌面行为分析助手\n数据存储于本地 SQLite")
+        from pulse import __version__
+        about = QLabel(f"Pulse v{__version__}\n个性化智能桌面行为分析助手\n数据存储于本地 SQLite")
         about.setStyleSheet("color: #808098; line-height: 1.6;")
         about.setWordWrap(True)
         self._layout.addWidget(about)
