@@ -260,8 +260,12 @@ class DashboardPage(QWidget):
     # ── 刷新数据 ──────────────────────────────────────────
 
     def refresh(self):
-        """页面切换时调用的公开刷新入口."""
-        self._refresh()
+        """页面切换时调用的公开刷新入口（异常兜底）. """
+        try:
+            self._refresh()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("仪表盘刷新异常: %s", e)
 
     def _refresh(self):
         today = date.today()

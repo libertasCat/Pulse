@@ -59,3 +59,5 @@
 | 55 | 点击统计页闪退（无数据时 HourlyTimeline 全 0 除零崩溃） | ✅ | `set_data` 分母 `or 1` 兜底；Qt 事件处理器内未捕获异常会原生崩溃 |
 | 56 | 图标提取 win32 路径不可用（`ExtractIconExW` 不存在 + PyQt6 已删 `fromWinHICON`） | ✅ | 删除死代码，仅用惰性 QFileIconProvider |
 | 57 | 每应用全量 `psutil.process_iter` 扫描进程（性能开销大） | ✅ | 移除，改用 DB 缓存 exe_path |
+| 58 | 图表负尺寸/除零隐患（偶现闪退） | ✅ | HourlyTimeline/HorizontalBarChart 负尺寸兜底、date_picker 除零兜底 |
+| 59 | 页面刷新异常导致崩溃 | ✅ | 统计页/仪表盘 refresh 加 try/except 兜底，异常只记日志不退出 |

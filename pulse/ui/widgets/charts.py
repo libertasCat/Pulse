@@ -38,7 +38,7 @@ class HorizontalBarChart(QWidget):
         label_w = 130
         value_w = 72
         bar_start_x = margin + icon_size + icon_margin + label_w + 8
-        bar_max_w = w - margin - bar_start_x - value_w - 4
+        bar_max_w = max(1, w - margin - bar_start_x - value_w - 4)
 
         y = margin
         for label, value, color_hex, icon in self._data:
@@ -173,9 +173,11 @@ class HourlyTimeline(QWidget):
         margin_right = 12
         margin_top = 12
         margin_bottom = 28
-        chart_w = w - margin_left - margin_right
-        chart_h = h - margin_top - margin_bottom
+        chart_w = max(1, w - margin_left - margin_right)
+        chart_h = max(1, h - margin_top - margin_bottom)
         bar_w = chart_w / 24 - 2
+        if bar_w < 1:
+            bar_w = 1
 
         for hour in range(24):
             x = margin_left + hour * (chart_w / 24) + 1

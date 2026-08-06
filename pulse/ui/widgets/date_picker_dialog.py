@@ -28,8 +28,9 @@ class _MonthGrid(QWidget):
     def _layout(self):
         _, self._last_day = calendar.monthrange(self._year, self._month)
         self._first_wd = date(self._year, self._month, 1).weekday()
-        self._cw = self.width() / 7
-        self._ch = (self.height() - 26) / 6
+        # 防止未布局时 width/height 为 0 导致除零
+        self._cw = max(self.width(), 7) / 7
+        self._ch = max(self.height() - 26, 6) / 6
 
     def _day_at(self, x: float, y: float) -> int:
         if y < 26:

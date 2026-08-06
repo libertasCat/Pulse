@@ -242,8 +242,12 @@ class StatsPage(QWidget):
     # ── 刷新 ─────────────────────────────────────────────
 
     def refresh(self):
-        """页面切换时调用的公开刷新入口."""
-        self._refresh()
+        """页面切换时调用的公开刷新入口（异常兜底，防止偶现崩溃）. """
+        try:
+            self._refresh()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("统计页刷新异常: %s", e)
 
     def _refresh(self):
         if not self._repo:
