@@ -307,16 +307,6 @@ class DashboardPage(QWidget):
                     exe_path = self._repo.get_latest_exe_path(raw_name)
                 except Exception:
                     pass
-            # 同时扫描正在运行的进程（兜底）
-            if not exe_path:
-                try:
-                    import psutil
-                    for proc in psutil.process_iter(['name', 'exe']):
-                        if proc.info.get('name') == raw_name and proc.info.get('exe'):
-                            exe_path = proc.info['exe']
-                            break
-                except Exception:
-                    pass
             icon = get_app_icon(raw_name, exe_path)
             data.append((disp_name, secs, color, icon))
         self._bar_chart.set_data(data)

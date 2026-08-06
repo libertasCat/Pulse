@@ -159,7 +159,8 @@ class HourlyTimeline(QWidget):
 
     def set_data(self, hourly_seconds: list[int]) -> None:
         self._data = hourly_seconds
-        self._max_val = max(hourly_seconds, default=1)
+        # 全 0 时也保证分母 >= 1，避免除零崩溃
+        self._max_val = max(hourly_seconds, default=1) or 1
         self.update()
 
     def paintEvent(self, event):

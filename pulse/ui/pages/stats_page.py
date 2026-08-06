@@ -270,16 +270,10 @@ class StatsPage(QWidget):
         for i, app in enumerate(apps[:10]):
             raw_name = app["name"]
             disp_name = strip_ext(raw_name)
-            exe_path = self._repo.get_latest_exe_path(raw_name)
-            if not exe_path:
-                try:
-                    import psutil
-                    for proc in psutil.process_iter(['name', 'exe']):
-                        if proc.info.get('name') == raw_name and proc.info.get('exe'):
-                            exe_path = proc.info['exe']
-                            break
-                except Exception:
-                    pass
+            try:
+                exe_path = self._repo.get_latest_exe_path(raw_name)
+            except Exception:
+                exe_path = None
             icon = get_app_icon(raw_name, exe_path)
             data.append((disp_name, app["total_seconds"], _BAR_COLORS[i % 8], icon))
         self._day_bar.set_data(data)

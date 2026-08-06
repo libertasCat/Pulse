@@ -6,17 +6,14 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtGui import QIcon, QPixmap
-from PyQt6.QtWidgets import QFileIconProvider
 
 from pulse.utils.constants import DATA_DIR
-
-_ICON_PROVIDER = QFileIconProvider()
 
 logger = logging.getLogger(__name__)
 
 _ICON_DIR = DATA_DIR / "icons"
 _FALLBACK_ICON: Optional[QIcon] = None
-_PIXMAP_CACHE: dict[str, QIcon] = {}
+_PIXMAP_CACHE: dict[str, QIcon] = None  # 惰性初始化，必须在 QApplication 创建后使用
 
 
 def _ensure_icon_dir():
@@ -45,10 +42,12 @@ def _make_fallback() -> QIcon:
 
 
 def _extract_exe_icon(exe_path: str) -> Optional[QPixmap]:
-    """从 exe 文件提取图标（QFileIconProvider -> Windows Shell）. """
+    """从 exe 提取图标（惰性 QFileIconProvider，避免模块级创建 + QApplication 前崩溃）."""
     try:
         from PyQt6.QtCore import QFileInfo
-        icon = _ICON_PROVIDER.icon(QFileInfo(exe_path))
+        from PyQt6.QtWidgets import QFileIconProvider
+        provider = QFileIconProvider()
+        icon = provider.icon(QFileInfo(exe_path))
         if icon and not icon.isNull():
             pm = icon.pixmap(32, 32)
             if pm and not pm.isNull():
@@ -60,6 +59,9 @@ def _extract_exe_icon(exe_path: str) -> Optional[QPixmap]:
 
 def get_app_icon(process_name: str, exe_path: Optional[str] = None) -> QIcon:
     """获取应用图标（缓存命中则直接返回）. """
+    global _PIXMAP_CACHE
+    if _PIXMAP_CACHE is None:
+        _PIXMAP_CACHE = {}
     if process_name in _PIXMAP_CACHE:
         return _PIXMAP_CACHE[process_name]
 
@@ -69,21 +71,22 @@ def get_app_icon(process_name: str, exe_path: Optional[str] = None) -> QIcon:
     if exe_path and os.path.isfile(exe_path):
         pm = _extract_exe_icon(exe_path)
         if pm:
-            # 缓存到磁盘
             _ensure_icon_dir()
             cached = _ICON_DIR / f"{process_name.replace('.', '_')}.png"
-            pm.save(str(cached), "PNG")
+            try:
+                pm.save(str(cached), "PNG")
+            except Exception:
+                pass
 
-    # 方法2: 从缓存文件加载
+    # 方法2: 从磁盘缓存加载
     if pm is None:
         _ensure_icon_dir()
         cached = _ICON_DIR / f"{process_name.replace('.', '_')}.png"
         if cached.exists():
-            from PyQt6.QtGui import QPixmap
             pm = QPixmap(str(cached))
 
-    # 方法3: 兜底
-    if pm is None:
+    # 方法3: 兜底占位图标
+    if pm is None or pm.isNull():
         icon = _make_fallback()
     else:
         icon = QIcon(pm)
