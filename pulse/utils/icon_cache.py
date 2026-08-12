@@ -2,6 +2,7 @@
 
 import logging
 import os
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
@@ -13,7 +14,9 @@ logger = logging.getLogger(__name__)
 
 _ICON_DIR = DATA_DIR / "icons"
 _FALLBACK_ICON: Optional[QIcon] = None
-_PIXMAP_CACHE: dict[str, QIcon] = None  # 惰性初始化，必须在 QApplication 创建后使用
+# LRU 缓存：最近使用过的图标保留，超出上限淘汰最旧的，防止无限增长
+_MAX_ICON_CACHE = 500
+_PIXMAP_CACHE: "OrderedDict[str, QIcon]" = None  # 惰性初始化，必须在 QApplication 创建后使用
 
 
 def _ensure_icon_dir():
@@ -57,12 +60,26 @@ def _extract_exe_icon(exe_path: str) -> Optional[QPixmap]:
     return None
 
 
-def get_app_icon(process_name: str, exe_path: Optional[str] = None) -> QIcon:
-    """获取应用图标（缓存命中则直接返回）. """
+def _cache_icon(name: str, icon: QIcon) -> None:
+    """LRU 缓存写入：超出上限淘汰最旧的."""
     global _PIXMAP_CACHE
     if _PIXMAP_CACHE is None:
-        _PIXMAP_CACHE = {}
+        _PIXMAP_CACHE = OrderedDict()
+    if name in _PIXMAP_CACHE:
+        _PIXMAP_CACHE.move_to_end(name)
+        return
+    if len(_PIXMAP_CACHE) >= _MAX_ICON_CACHE:
+        _PIXMAP_CACHE.popitem(last=False)  # 淘汰最久未用的
+    _PIXMAP_CACHE[name] = icon
+
+
+def get_app_icon(process_name: str, exe_path: Optional[str] = None) -> QIcon:
+    """获取应用图标（LRU 缓存命中则直接返回）. """
+    global _PIXMAP_CACHE
+    if _PIXMAP_CACHE is None:
+        _PIXMAP_CACHE = OrderedDict()
     if process_name in _PIXMAP_CACHE:
+        _PIXMAP_CACHE.move_to_end(process_name)  # 更新为最近使用
         return _PIXMAP_CACHE[process_name]
 
     pm = None
@@ -91,7 +108,7 @@ def get_app_icon(process_name: str, exe_path: Optional[str] = None) -> QIcon:
     else:
         icon = QIcon(pm)
 
-    _PIXMAP_CACHE[process_name] = icon
+    _cache_icon(process_name, icon)
     return icon
 
 
