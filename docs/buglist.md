@@ -61,3 +61,4 @@
 | 57 | 每应用全量 `psutil.process_iter` 扫描进程（性能开销大） | ✅ | 移除，改用 DB 缓存 exe_path |
 | 58 | 图表负尺寸/除零隐患（偶现闪退） | ✅ | HourlyTimeline/HorizontalBarChart 负尺寸兜底、date_picker 除零兜底 |
 | 59 | 页面刷新异常导致崩溃 | ✅ | 统计页/仪表盘 refresh 加 try/except 兜底，异常只记日志不退出 |
+| 60 | 跨零点后日历"今日"高亮不更新 | ✅ | NotionGrid.set_data 刷新 `_today`；日历页 30s 定时检查日期变化自动刷新 |

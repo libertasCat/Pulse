@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from PyQt6.QtCore import Qt  # type: ignore
+from PyQt6.QtCore import QTimer, Qt  # type: ignore
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget  # type: ignore
 
 from pulse.db.repository import Repository
@@ -44,6 +44,18 @@ class CalendarPage(QWidget):
         self._popup = TaskCreatePopup(self)
 
         self._refresh_grid()
+
+        # ── 跨零点自动刷新"今日"高亮 ──
+        self._date_check = QTimer(self)
+        self._date_check.timeout.connect(self._check_date_change)
+        self._date_check.start(30000)  # 每 30 秒检查一次
+
+    def _check_date_change(self):
+        """日期变化时（跨零点）刷新日历."""
+        today = date.today()
+        if today != self._today:
+            self._today = today
+            self._refresh_grid()
 
     def set_repo(self, repo: Repository) -> None:
         self._repo = repo

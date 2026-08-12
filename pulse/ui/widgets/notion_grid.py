@@ -46,6 +46,7 @@ class NotionGrid(QWidget):
     def set_data(self, year: int, month: int, tasks: list):
         self._year = year
         self._month = month
+        self._today = date.today()  # 刷新"今日"高亮
         self._tasks = []
         for i, row in enumerate(tasks):
             task = row[0]
