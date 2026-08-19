@@ -3,9 +3,9 @@
 from datetime import date, datetime
 from typing import Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal  # type: ignore
+from PyQt6.QtCore import QPoint, Qt, pyqtSignal  # type: ignore
 from PyQt6.QtWidgets import (  # type: ignore
-    QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
+    QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QScrollArea, QTextEdit,
     QTimeEdit, QVBoxLayout, QWidget,
 )
@@ -58,6 +58,65 @@ class _FieldEdit(QTextEdit):
         event.ignore()  # 让事件冒泡到对话框的滚动区域
 
 
+class _MenuOption(QFrame):
+    """评论 ⋮ 菜单的小卡片选项 —— 可自定义颜色，hover 高亮."""
+
+    clicked = pyqtSignal()
+
+    def __init__(self, text: str, color: str = "#e0e0e8", parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(34)
+        lo = QHBoxLayout(self)
+        lo.setContentsMargins(14, 0, 14, 0)
+        lbl = QLabel(text)
+        lbl.setStyleSheet(f"color: {color}; font-size: 13px; background: transparent;")
+        lo.addWidget(lbl)
+        self._apply(False)
+
+    def _apply(self, hover: bool):
+        self.setStyleSheet(
+            "QFrame { background: %s; border-radius: 6px; }"
+            % ("#3a3a5a" if hover else "transparent")
+        )
+
+    def enterEvent(self, event):
+        self._apply(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._apply(False)
+        super().leaveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
+class _CommentActionsCard(QFrame):
+    """评论 ⋮ 展开的小卡片 —— 含编辑 / 删除，点击外部自动关闭."""
+
+    def __init__(self, on_edit, on_delete, parent=None):
+        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setStyleSheet(
+            "QFrame { background: #25253a; border: 1px solid #3a3a50; border-radius: 8px; }"
+        )
+        lo = QVBoxLayout(self)
+        lo.setContentsMargins(6, 6, 6, 6)
+        lo.setSpacing(2)
+
+        edit_opt = _MenuOption("✏️ 编辑")
+        edit_opt.clicked.connect(lambda: (on_edit(), self.close()))
+        del_opt = _MenuOption("🗑 删除", color="#f44336")
+        del_opt.clicked.connect(lambda: (on_delete(), self.close()))
+
+        lo.addWidget(edit_opt)
+        lo.addWidget(del_opt)
+        self.setFixedWidth(132)
+
+
 class TaskDetailDialog(QDialog):
     """屏幕中央出现的 Notion 风格任务详情卡片."""
 
@@ -67,6 +126,8 @@ class TaskDetailDialog(QDialog):
         self._repo = repo
         self._task = repo.get_task_by_id(task_id)
         self._field_edits: list = []  # 所有字段 edit 引用，用于统一重测尺寸
+        self._editing_comment_id: Optional[int] = None  # 正在编辑的评论 id
+        self._comment_edit: Optional[QLineEdit] = None  # 评论编辑输入框引用
 
         # 模态 + 无边框
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -205,6 +266,23 @@ class TaskDetailDialog(QDialog):
         add_field_btn.clicked.connect(self._add_field)
         inner_lo.addWidget(add_field_btn)
 
+        # ── 清单（功能清单模块） ──
+        inner_lo.addWidget(self._mk_label("清单"))
+        self._checklists_layout = QVBoxLayout()
+        self._checklists_layout.setSpacing(8)
+        self._rebuild_checklists()
+        inner_lo.addLayout(self._checklists_layout)
+
+        add_cl_btn = QPushButton("+ 添加清单")
+        add_cl_btn.setStyleSheet(
+            "QPushButton { background: transparent; border: 1px dashed #3a3a50; border-radius: 6px; "
+            "padding: 8px; color: #606080; font-size: 12px; }"
+            "QPushButton:hover { border-color: #7c5cfc; color: #7c5cfc; }"
+        )
+        add_cl_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_cl_btn.clicked.connect(self._add_checklist)
+        inner_lo.addWidget(add_cl_btn)
+
         # ── 评论 ──
         inner_lo.addWidget(self._mk_label("评论"))
         self._comments_layout = QVBoxLayout()
@@ -334,19 +412,296 @@ class TaskDetailDialog(QDialog):
         from PyQt6.QtCore import QTimer as _QT
         _QT.singleShot(0, self._resize_all_fields)
 
+    # ── 清单（功能清单模块） ──────────────────────────────
+
+    def _rebuild_checklists(self):
+        """重建清单区（新增/勾选/删除后整体刷新）. """
+        self._clear_layout(self._checklists_layout)
+        if not self._task or not self._repo:
+            return
+        for cl in self._repo.get_checklists(self._task_id):
+            self._add_checklist_widget(cl)
+
+    def _add_checklist_widget(self, cl):
+        items = list(cl.items or [])
+        done = sum(1 for it in items if it.done)
+        total = len(items)
+        complete = total > 0 and done == total
+
+        frame = QFrame()
+        frame.setObjectName("checklistCard")
+        frame.setStyleSheet(
+            "QFrame#checklistCard { background: #25253a; border-radius: 8px; padding: 2px; "
+            "border: 1px solid %s; }"
+            % ("#4caf50" if complete else "#3a3a50")
+        )
+        v = QVBoxLayout(frame)
+        v.setContentsMargins(10, 8, 8, 8)
+        v.setSpacing(6)
+
+        # ── 头部：标题 + 进度徽标 + 删除 ──
+        head = QHBoxLayout()
+        head.setSpacing(8)
+
+        title_edit = QLineEdit(cl.title)
+        tf = title_edit.font()
+        tf.setStrikeOut(complete)
+        title_edit.setFont(tf)
+        title_edit.setStyleSheet(
+            "QLineEdit { background: transparent; border: none; color: #ffffff; "
+            "font-size: 14px; font-weight: 600; padding: 2px; }"
+        )
+        title_edit.editingFinished.connect(
+            lambda e=title_edit, cid=cl.id: self._save_checklist_title(cid, e.text())
+        )
+        head.addWidget(title_edit, stretch=1)
+
+        badge = QLabel("✓ 已完成" if complete else f"{done}/{total}")
+        badge.setStyleSheet(
+            "color: %s; font-size: 11px; font-weight: 600; background: transparent; "
+            "padding: 2px 8px; border-radius: 10px; border: 1px solid %s;"
+            % ("#4caf50" if complete else "#808098", "#2d5c34" if complete else "#3a3a50")
+        )
+        head.addWidget(badge)
+
+        del_cl = QPushButton("✕")
+        del_cl.setFixedSize(24, 24)
+        del_cl.setCursor(Qt.CursorShape.PointingHandCursor)
+        del_cl.setStyleSheet(
+            "QPushButton { background: transparent; border: none; border-radius: 12px; "
+            "color: #606080; font-size: 12px; }"
+            "QPushButton:hover { background: #f44336; color: #fff; }"
+        )
+        del_cl.clicked.connect(lambda checked, cid=cl.id: self._delete_checklist(cid))
+        head.addWidget(del_cl)
+        v.addLayout(head)
+
+        # ── 小项（勾选框 + 内容 + 删除） ──
+        for it in items:
+            v.addLayout(self._make_item_row(it))
+
+        # ── + 添加项目 ──
+        add_item = QPushButton("+ 添加项目")
+        add_item.setStyleSheet(
+            "QPushButton { background: transparent; border: 1px dashed #3a3a50; border-radius: 6px; "
+            "padding: 5px; color: #606080; font-size: 11px; }"
+            "QPushButton:hover { border-color: #7c5cfc; color: #7c5cfc; }"
+        )
+        add_item.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_item.clicked.connect(lambda checked, cid=cl.id: self._add_item(cid))
+        v.addWidget(add_item)
+
+        self._checklists_layout.addWidget(frame)
+
+    def _make_item_row(self, it) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(6)
+
+        cb = QCheckBox()
+        cb.setChecked(bool(it.done))
+        cb.setCursor(Qt.CursorShape.PointingHandCursor)
+        cb.setStyleSheet(
+            "QCheckBox { spacing: 8px; background: transparent; }"
+            "QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #5a5a7a; "
+            "border-radius: 4px; background: #1e1e34; }"
+            "QCheckBox::indicator:hover { border-color: #7c5cfc; }"
+            "QCheckBox::indicator:checked { background: #4caf50; border-color: #4caf50; }"
+        )
+        cb.toggled.connect(lambda checked, iid=it.id: self._toggle_item(iid, checked))
+        row.addWidget(cb)
+
+        edit = QLineEdit(it.content)
+        edit.setPlaceholderText("新项目")
+        f = edit.font()
+        f.setStrikeOut(bool(it.done))
+        edit.setFont(f)
+        edit.setStyleSheet(
+            "QLineEdit { background: transparent; border: none; color: #e0e0e8; "
+            "font-size: 13px; padding: 2px; }"
+        )
+        edit.editingFinished.connect(
+            lambda e=edit, iid=it.id: self._save_item(iid, e.text())
+        )
+        row.addWidget(edit, stretch=1)
+
+        del_item = QPushButton("✕")
+        del_item.setFixedSize(20, 20)
+        del_item.setCursor(Qt.CursorShape.PointingHandCursor)
+        del_item.setStyleSheet(
+            "QPushButton { background: transparent; border: none; border-radius: 10px; "
+            "color: #606080; font-size: 10px; }"
+            "QPushButton:hover { background: #f44336; color: #fff; }"
+        )
+        del_item.clicked.connect(lambda checked, iid=it.id: self._delete_item(iid))
+        row.addWidget(del_item)
+
+        return row
+
+    def _add_checklist(self):
+        if not self._repo:
+            return
+        self._repo.add_checklist(self._task_id)
+        self._rebuild_checklists()
+
+    def _save_checklist_title(self, cl_id: int, text: str):
+        if not self._repo:
+            return
+        self._repo.update_checklist_title(cl_id, text.strip() or "清单")
+
+    def _delete_checklist(self, cl_id: int):
+        try:
+            self._repo.delete_checklist(cl_id)
+        except Exception as e:
+            print(f"删除清单失败: {e}")
+        self._rebuild_checklists()
+
+    def _add_item(self, cl_id: int):
+        if not self._repo:
+            return
+        self._repo.add_checklist_item(cl_id)
+        self._rebuild_checklists()
+
+    def _save_item(self, item_id: int, text: str):
+        if not self._repo:
+            return
+        self._repo.update_checklist_item(item_id, text)
+
+    def _toggle_item(self, item_id: int, checked: bool):
+        """勾选/取消勾选小项 → 刷新（全部勾选时清单外部标记为已完成）. """
+        if not self._repo:
+            return
+        try:
+            self._repo.set_checklist_item_done(item_id, bool(checked))
+        except Exception as e:
+            print(f"勾选清单小项失败: {e}")
+        self._rebuild_checklists()
+
+    def _delete_item(self, item_id: int):
+        try:
+            self._repo.delete_checklist_item(item_id)
+        except Exception as e:
+            print(f"删除清单小项失败: {e}")
+        self._rebuild_checklists()
+
     # ── 评论 ──────────────────────────────────────────
 
     def _rebuild_comments(self):
         self._clear_layout(self._comments_layout)
-        if not self._task:
+        if not self._task or not self._repo:
             return
         for c in self._repo.get_comments(self._task_id):
-            ts = c.created_at.strftime("%m/%d %H:%M") if c.created_at else ""
-            text = f"<b>{c.author}</b>  <span style='color:#606080;font-size:11px;'>{ts}</span><br>{c.content}"
-            lbl = QLabel(text)
-            lbl.setWordWrap(True)
-            lbl.setStyleSheet("font-size: 12px; padding: 6px 0; color: #c0c0d0; background: transparent;")
-            self._comments_layout.addWidget(lbl)
+            self._add_comment_widget(c)
+
+    def _add_comment_widget(self, c):
+        frame = QFrame()
+        frame.setStyleSheet(
+            "QFrame { background: #22223a; border: 1px solid #33334e; border-radius: 8px; }"
+        )
+        v = QVBoxLayout(frame)
+        v.setContentsMargins(10, 8, 8, 4)
+        v.setSpacing(4)
+
+        # 作者 + 时间
+        ts = c.created_at.strftime("%m/%d %H:%M") if c.created_at else ""
+        head = QHBoxLayout()
+        author = QLabel(f"<b>{c.author}</b>")
+        author.setStyleSheet("color: #c0c0d0; font-size: 12px; background: transparent;")
+        time_lbl = QLabel(ts)
+        time_lbl.setStyleSheet("color: #606080; font-size: 11px; background: transparent;")
+        head.addWidget(author)
+        head.addSpacing(8)
+        head.addWidget(time_lbl)
+        head.addStretch()
+        v.addLayout(head)
+
+        # 内容 / 编辑态
+        if self._editing_comment_id == c.id:
+            edit_row = QHBoxLayout()
+            edit_row.setSpacing(6)
+            self._comment_edit = QLineEdit(c.content)
+            self._comment_edit.setStyleSheet(
+                "QLineEdit { padding: 6px 8px; border-radius: 6px; background: #1e1e34; "
+                "color: #e0e0e8; border: 1px solid #7c5cfc; font-size: 13px; }"
+            )
+            save_btn = QPushButton("保存")
+            save_btn.setStyleSheet(
+                "QPushButton { background: #7c5cfc; border: none; border-radius: 6px; "
+                "padding: 6px 12px; color: #fff; font-size: 11px; }"
+                "QPushButton:hover { background: #6a4acc; }"
+            )
+            save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            save_btn.clicked.connect(lambda checked, cid=c.id: self._save_comment_edit(cid))
+            cancel_btn = QPushButton("取消")
+            cancel_btn.setStyleSheet(
+                "QPushButton { background: transparent; border: 1px solid #3a3a50; border-radius: 6px; "
+                "padding: 6px 12px; color: #a0a0b8; font-size: 11px; }"
+                "QPushButton:hover { border-color: #5a5a7a; }"
+            )
+            cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            cancel_btn.clicked.connect(lambda checked: self._cancel_comment_edit())
+            edit_row.addWidget(self._comment_edit, stretch=1)
+            edit_row.addWidget(save_btn)
+            edit_row.addWidget(cancel_btn)
+            v.addLayout(edit_row)
+        else:
+            content = QLabel(c.content)
+            content.setWordWrap(True)
+            content.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            content.setStyleSheet("color: #e0e0e8; font-size: 13px; background: transparent;")
+            v.addWidget(content)
+
+        # 右下角 ⋮（编辑 / 删除）
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        dots = QPushButton("⋮")
+        dots.setFixedSize(22, 22)
+        dots.setCursor(Qt.CursorShape.PointingHandCursor)
+        dots.setStyleSheet(
+            "QPushButton { background: transparent; border: none; border-radius: 5px; "
+            "color: #606080; font-size: 14px; }"
+            "QPushButton:hover { background: #3a3a5a; color: #e0e0e8; }"
+        )
+        dots.clicked.connect(lambda checked, cid=c.id: self._show_comment_menu(dots, cid))
+        btn_row.addWidget(dots)
+        v.addLayout(btn_row)
+
+        self._comments_layout.addWidget(frame)
+
+    def _show_comment_menu(self, btn: QPushButton, comment_id: int):
+        """⋮ 点击 → 右下角展开编辑/删除小卡片."""
+        card = _CommentActionsCard(
+            on_edit=lambda: self._start_edit_comment(comment_id),
+            on_delete=lambda: self._delete_comment(comment_id),
+            parent=self,
+        )
+        card.move(btn.mapToGlobal(QPoint(0, btn.height() + 2)))
+        card.show()
+
+    def _start_edit_comment(self, comment_id: int):
+        self._editing_comment_id = comment_id
+        self._rebuild_comments()
+
+    def _save_comment_edit(self, comment_id: int):
+        text = self._comment_edit.text().strip() if self._comment_edit else ""
+        if text:
+            try:
+                self._repo.update_comment(comment_id, text)
+            except Exception as e:
+                print(f"编辑评论失败: {e}")
+        self._editing_comment_id = None
+        self._rebuild_comments()
+
+    def _cancel_comment_edit(self):
+        self._editing_comment_id = None
+        self._rebuild_comments()
+
+    def _delete_comment(self, comment_id: int):
+        try:
+            self._repo.delete_comment(comment_id)
+        except Exception as e:
+            print(f"删除评论失败: {e}")
+        self._editing_comment_id = None
+        self._rebuild_comments()
 
     @staticmethod
     def _clear_layout(layout):

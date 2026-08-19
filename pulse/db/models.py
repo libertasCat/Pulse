@@ -89,6 +89,8 @@ class CalendarTask(Base):
                           order_by="CalendarTaskField.sort_order")
     comments = relationship("CalendarComment", back_populates="task", cascade="all, delete-orphan",
                             order_by="CalendarComment.created_at")
+    checklists = relationship("Checklist", back_populates="task", cascade="all, delete-orphan",
+                              order_by="Checklist.sort_order")
 
     def __repr__(self) -> str:
         return f"<CalendarTask(id={self.id}, date='{self.date}', title='{self.title}')>"
@@ -124,3 +126,38 @@ class CalendarComment(Base):
 
     def __repr__(self) -> str:
         return f"<CalendarComment(id={self.id}, task_id={self.task_id})>"
+
+
+class Checklist(Base):
+    """任务清单 —— 一组带勾选框的小项，全部勾选后外部标记为已完成."""
+    __tablename__ = "checklists"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("calendar_tasks.id"), nullable=False, index=True, comment="所属任务")
+    title = Column(String(256), nullable=False, default="清单", comment="清单标题")
+    sort_order = Column(Integer, default=0, comment="排序")
+    created_at = Column(DateTime, default=datetime.now)
+
+    items = relationship("ChecklistItem", back_populates="checklist", cascade="all, delete-orphan",
+                         order_by="ChecklistItem.sort_order")
+    task = relationship("CalendarTask", back_populates="checklists")
+
+    def __repr__(self) -> str:
+        return f"<Checklist(id={self.id}, task_id={self.task_id}, title='{self.title}')>"
+
+
+class ChecklistItem(Base):
+    """清单小项 —— 前面带勾选符号."""
+    __tablename__ = "checklist_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    checklist_id = Column(Integer, ForeignKey("checklists.id"), nullable=False, index=True, comment="所属清单")
+    content = Column(Text, default="", comment="小项内容")
+    done = Column(Boolean, default=False, comment="是否已勾选")
+    sort_order = Column(Integer, default=0, comment="排序")
+    created_at = Column(DateTime, default=datetime.now)
+
+    checklist = relationship("Checklist", back_populates="items")
+
+    def __repr__(self) -> str:
+        return f"<ChecklistItem(id={self.id}, checklist_id={self.checklist_id}, done={self.done})>"

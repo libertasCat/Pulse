@@ -21,6 +21,7 @@ class NotionGrid(QWidget):
         self._month = date.today().month
         self._today = date.today()
         self._tasks: list = []
+        self._checklist_summaries: dict = {}  # task_id → (已完成项数, 总项数)
         self._hover_day = 0
         self._hover_task_id: Optional[int] = None
         self._drag_side_task_id: Optional[int] = None
@@ -43,10 +44,11 @@ class NotionGrid(QWidget):
 
     # ── 数据 ────────────────────────────────────────────
 
-    def set_data(self, year: int, month: int, tasks: list):
+    def set_data(self, year: int, month: int, tasks: list, checklist_summaries: Optional[dict] = None):
         self._year = year
         self._month = month
         self._today = date.today()  # 刷新"今日"高亮
+        self._checklist_summaries = checklist_summaries or {}
         self._tasks = []
         for i, row in enumerate(tasks):
             task = row[0]
@@ -228,6 +230,11 @@ class NotionGrid(QWidget):
             pen_color = "#7c5cfc" if is_hover else "#3a3a50"
             font_weight = QFont.Weight.Bold if is_hover else QFont.Weight.Normal
 
+            # 清单进度 → 全部完成时任务条左侧竖条变绿、右侧显示 ✓
+            done_cnt, total_cnt = self._checklist_summaries.get(tid, (0, 0))
+            all_done = total_cnt > 0 and done_cnt >= total_cnt
+            accent_color = "#4caf50" if all_done else "#7c5cfc"
+
             # 拆分为每行的段：[(row, seg_start_day, seg_end_day)]
             segments = []
             cur_row = (s_day + self._first_wd - 1) // 7
@@ -255,7 +262,7 @@ class NotionGrid(QWidget):
                 painter.drawPath(path)
 
                 painter.setPen(Qt.PenStyle.NoPen)
-                painter.fillRect(QRectF(bx + 1, by + 2, 3, bh - 4), QColor("#7c5cfc"))
+                painter.fillRect(QRectF(bx + 1, by + 2, 3, bh - 4), QColor(accent_color))
 
                 # 标题每段都画（跨行时每行第一格显示任务名，Notion 风格）
                 painter.setPen(QColor("#e0e0e8"))
@@ -263,6 +270,19 @@ class NotionGrid(QWidget):
                 text = title[:int(bw / 7.5)] + ".." if len(title) > int(bw / 7.5) else title
                 painter.drawText(QRectF(bx + 8, by, bw - 14, bh),
                                  Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+
+                # 清单进度标记（右对齐）：未完成显示 n/m，全部完成显示绿色 ✓
+                if total_cnt > 0 and bw > 80:
+                    if all_done:
+                        painter.setPen(QColor("#4caf50"))
+                        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                        mark = "✓"
+                    else:
+                        painter.setPen(QColor("#a0a0b8"))
+                        painter.setFont(QFont("Segoe UI", 9))
+                        mark = f"{done_cnt}/{total_cnt}"
+                    painter.drawText(QRectF(bx + bw - 40, by, 36, bh),
+                                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, mark)
 
                 # 拖拽手柄：左边缘（第一段且开始日期在当月内）
                 if is_hover and bw > 40 and seg_idx == 0 and self._task_left_draggable(sd):

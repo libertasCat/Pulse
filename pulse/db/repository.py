@@ -8,7 +8,10 @@ from typing import Optional, List
 from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import Session as SASession, sessionmaker
 
-from pulse.db.models import Base, AppSession, AppCategory, Category, CalendarTask, CalendarTaskField, CalendarComment
+from pulse.db.models import (
+    Base, AppSession, AppCategory, Category, CalendarTask, CalendarTaskField,
+    CalendarComment, Checklist, ChecklistItem,
+)
 from pulse.utils.constants import DB_PATH, DEFAULT_CATEGORIES
 
 logger = logging.getLogger(__name__)
@@ -427,6 +430,110 @@ class Repository:
     def get_comments(self, task_id: int) -> List[CalendarComment]:
         with self.session() as s:
             return s.query(CalendarComment).filter(CalendarComment.task_id == task_id).order_by(CalendarComment.created_at).all()
+
+    def update_comment(self, comment_id: int, content: str) -> bool:
+        """编辑评论内容."""
+        with self.session() as s:
+            count = s.query(CalendarComment).filter(CalendarComment.id == comment_id).update({"content": content})
+            return count > 0
+
+    def delete_comment(self, comment_id: int) -> bool:
+        """删除评论."""
+        with self.session() as s:
+            count = s.query(CalendarComment).filter(CalendarComment.id == comment_id).delete()
+            return count > 0
+
+    # ─── 清单（Checklist） ────────────────────────────────────────
+
+    def add_checklist(self, task_id: int, title: str = "清单") -> Checklist:
+        """为任务新建一组清单."""
+        with self.session() as s:
+            max_order = (
+                s.query(func.max(Checklist.sort_order))
+                .filter(Checklist.task_id == task_id)
+                .scalar() or 0
+            )
+            cl = Checklist(task_id=task_id, title=title, sort_order=max_order + 1)
+            s.add(cl)
+            s.flush()
+            return cl
+
+    def get_checklists(self, task_id: int) -> List[Checklist]:
+        """获取任务的全部清单（含小项，预加载）. """
+        with self.session() as s:
+            from sqlalchemy.orm import joinedload
+            return (
+                s.query(Checklist)
+                .options(joinedload(Checklist.items))
+                .filter(Checklist.task_id == task_id)
+                .order_by(Checklist.sort_order)
+                .all()
+            )
+
+    def update_checklist_title(self, checklist_id: int, title: str) -> bool:
+        with self.session() as s:
+            count = s.query(Checklist).filter(Checklist.id == checklist_id).update({"title": title})
+            return count > 0
+
+    def delete_checklist(self, checklist_id: int) -> bool:
+        """删除清单（ORM 方式触发 cascade 连带删除小项）. """
+        with self.session() as s:
+            cl = s.query(Checklist).filter(Checklist.id == checklist_id).first()
+            if not cl:
+                return False
+            s.delete(cl)
+            return True
+
+    def add_checklist_item(self, checklist_id: int, content: str = "") -> ChecklistItem:
+        with self.session() as s:
+            max_order = (
+                s.query(func.max(ChecklistItem.sort_order))
+                .filter(ChecklistItem.checklist_id == checklist_id)
+                .scalar() or 0
+            )
+            item = ChecklistItem(checklist_id=checklist_id, content=content, sort_order=max_order + 1)
+            s.add(item)
+            s.flush()
+            return item
+
+    def update_checklist_item(self, item_id: int, content: str) -> bool:
+        with self.session() as s:
+            count = s.query(ChecklistItem).filter(ChecklistItem.id == item_id).update({"content": content})
+            return count > 0
+
+    def set_checklist_item_done(self, item_id: int, done: bool) -> bool:
+        """勾选 / 取消勾选清单小项."""
+        with self.session() as s:
+            count = s.query(ChecklistItem).filter(ChecklistItem.id == item_id).update({"done": done})
+            return count > 0
+
+    def delete_checklist_item(self, item_id: int) -> bool:
+        with self.session() as s:
+            count = s.query(ChecklistItem).filter(ChecklistItem.id == item_id).delete()
+            return count > 0
+
+    def get_checklist_summaries(self, task_ids: List[int]) -> dict:
+        """批量返回清单进度：task_id → (已完成项数, 总项数).
+
+        用于日历任务条显示进度 / 完成标记。只统计有小项的清单。
+        """
+        if not task_ids:
+            return {}
+        with self.session() as s:
+            rows = (
+                s.query(Checklist.task_id, ChecklistItem.done, func.count(ChecklistItem.id))
+                .join(ChecklistItem, ChecklistItem.checklist_id == Checklist.id)
+                .filter(Checklist.task_id.in_(task_ids))
+                .group_by(Checklist.task_id, ChecklistItem.done)
+                .all()
+            )
+        summary: dict[int, list] = {}
+        for tid, done_flag, cnt in rows:
+            summary.setdefault(tid, [0, 0])
+            summary[tid][1] += cnt
+            if done_flag:
+                summary[tid][0] += cnt
+        return {tid: (v[0], v[1]) for tid, v in summary.items()}
 
     # ─── 定时提醒 ───────────────────────────────────────────
 

@@ -111,7 +111,9 @@ class CalendarPage(QWidget):
         self._nav_label.setText(f"{_MONTH_NAMES[self._view_month]} {self._view_year}")
         if self._repo:
             tasks = self._repo.get_tasks_by_month(self._view_year, self._view_month)
-            self._grid.set_data(self._view_year, self._view_month, tasks)
+            # 清单进度（任务条上显示 n/m 或 ✓）
+            summaries = self._repo.get_checklist_summaries([row[0].id for row in tasks]) if tasks else {}
+            self._grid.set_data(self._view_year, self._view_month, tasks, checklist_summaries=summaries)
 
     # ── 导航 ───────────────────────────────────────────
 
