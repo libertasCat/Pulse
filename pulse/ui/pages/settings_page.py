@@ -1,5 +1,6 @@
 """设置页面 —— 主题 / 追踪 / 自启 / 数据清理 / LLM."""
 
+import sys
 from typing import Optional
 
 from PyQt6.QtCore import Qt
@@ -259,7 +260,8 @@ class SettingsPage(QWidget):
 
     def _build_auto_start_section(self):
         self._add_section("开机自启")
-        self._auto_start_cb = QCheckBox("开机时自动启动 Pulse")
+        label = "登录时自动启动 Pulse" if sys.platform.startswith("linux") else "开机时自动启动 Pulse"
+        self._auto_start_cb = QCheckBox(label)
         self._auto_start_cb.setChecked(is_auto_start_enabled())
         self._auto_start_cb.toggled.connect(self._on_auto_start_toggled)
         self._layout.addWidget(self._auto_start_cb)

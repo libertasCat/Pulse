@@ -1,7 +1,5 @@
 """应用追踪引擎 —— 后台轮询活跃窗口并记录使用数据."""
 
-import ctypes
-import ctypes.wintypes
 import logging
 import threading
 import time
@@ -10,51 +8,18 @@ from datetime import datetime
 from typing import Optional, Callable
 
 import psutil
-import win32api
-import win32gui
-import win32process
-
 from pulse.db.models import AppSession
 from pulse.db.repository import Repository
 from pulse.utils.constants import KNOWN_BROWSERS, BROWSER_TITLE_SUFFIXES
+from pulse.utils.process_names import strip_ext
+from pulse.utils.window_monitor import WindowInfo, get_active_window, get_idle_seconds
 
 logger = logging.getLogger(__name__)
 
 
-# ─── Windows idle detection via ctypes ──────────────────────────
-
-user32 = ctypes.windll.user32
-kernel32 = ctypes.windll.kernel32
-
-
-class LASTINPUTINFO(ctypes.Structure):
-    _fields_ = [
-        ("cbSize", ctypes.wintypes.UINT),
-        ("dwTime", ctypes.wintypes.DWORD),
-    ]
-
-
 def _get_idle_seconds() -> int:
-    """获取自上次用户输入以来的空闲秒数（Windows 全局）.使用 GetLastInputInfo API."""
-    info = LASTINPUTINFO()
-    info.cbSize = ctypes.sizeof(LASTINPUTINFO)
-    if not user32.GetLastInputInfo(ctypes.byref(info)):
-        logger.warning("GetLastInputInfo 调用失败")
-        return 0
-    current_tick = kernel32.GetTickCount()
-    elapsed = (ctypes.c_uint32(current_tick - info.dwTime).value) / 1000.0
-    return int(elapsed)
-
-
-# ─── 数据结构 ──────────────────────────────────────────────────
-
-
-@dataclass
-class WindowInfo:
-    """当前活跃窗口的快照."""
-    process_name: str = ""
-    window_title: str = ""
-    pid: int = 0
+    """获取跨平台用户空闲秒数，保留旧函数名兼容现有测试."""
+    return get_idle_seconds()
 
 
 @dataclass
@@ -131,6 +96,11 @@ class AppTracker:
         while self._running:
             try:
                 window = self._get_active_window()
+                if not window.available:
+                    with self._lock:
+                        self._flush_current()
+                    time.sleep(self.config.poll_interval)
+                    continue
                 idle_sec = _get_idle_seconds()
                 is_idle = idle_sec >= self.config.idle_threshold
 
@@ -219,25 +189,7 @@ class AppTracker:
         Returns:
             WindowInfo: 包含进程名、窗口标题、PID
         """
-        try:
-            hwnd = win32gui.GetForegroundWindow()
-            if not hwnd:
-                return WindowInfo(process_name="unknown", window_title="", pid=0)
-
-            _, pid = win32process.GetWindowThreadProcessId(hwnd)
-            title = win32gui.GetWindowText(hwnd) or ""
-
-            # 通过 psutil 获取进程名
-            try:
-                proc = psutil.Process(pid)
-                process_name = proc.name()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                process_name = "unknown"
-
-            return WindowInfo(process_name=process_name, window_title=title, pid=pid)
-        except Exception as exc:
-            logger.warning("获取窗口信息失败: %s", exc)
-            return WindowInfo(process_name="error", window_title="", pid=0)
+        return get_active_window()
 
     # ── 浏览器页面识别 ────────────────────────────────────────
 
@@ -249,7 +201,7 @@ class AppTracker:
         Firefox 可能用 " | " 分割域名:  "页面标题 | 站点名 - Mozilla Firefox"
         新标签页 / 设置页等无意义标题返回 None.
         """
-        proc = window.process_name.lower()
+        proc = strip_ext(window.process_name).lower()
         if proc not in KNOWN_BROWSERS:
             return None
 

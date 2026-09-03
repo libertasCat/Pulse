@@ -116,7 +116,7 @@ def run_tracker() -> None:
 
 def run_gui() -> None:
     """GUI 模式 —— 启动 PyQt6 桌面界面."""
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 
     setup_logging()
     _print_banner()
@@ -129,7 +129,9 @@ def run_gui() -> None:
     # 创建 QApplication
     app = QApplication(sys.argv)
     app.setApplicationName("Pulse")
-    app.setQuitOnLastWindowClosed(False)  # 关闭窗口不退出，保留托盘
+    # 有托盘时保留原行为；部分 Linux 桌面（尤其未安装 AppIndicator 的 GNOME）
+    # 不提供托盘，此时关闭主窗口应真正退出，避免程序无界面地留在后台。
+    app.setQuitOnLastWindowClosed(False)
 
     # 初始化后端
     _init_backend()
@@ -175,12 +177,18 @@ def run_gui() -> None:
         config_mgr=_config_mgr,
     )
 
-    # 托盘
-    tray = TrayIcon(window)
-    tray.show()
+    # 托盘（Windows 行为保持不变；Linux 无托盘环境安全降级）
+    tray = None
+    if QSystemTrayIcon.isSystemTrayAvailable():
+        tray = TrayIcon(window)
+        tray.show()
+    else:
+        app.setQuitOnLastWindowClosed(True)
+        logger.warning("系统托盘不可用，关闭主窗口将退出 Pulse")
 
     # 互相关联
-    window.set_tray_icon(tray)
+    if tray:
+        window.set_tray_icon(tray)
     window.show()
 
     # 退出时清理

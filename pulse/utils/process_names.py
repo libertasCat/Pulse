@@ -2,7 +2,7 @@
 
 import re
 
-_EXE_EXTENSIONS = re.compile(r"\.(exe|py|jar|app|bin|sh|bat|cmd)$", re.IGNORECASE)
+_EXE_EXTENSIONS = re.compile(r"\.(exe|py|jar|app|appimage|bin|sh|bat|cmd)$", re.IGNORECASE)
 
 
 def strip_ext(process_name: str) -> str:

@@ -1,6 +1,7 @@
 """分类管理页面 —— 网格卡片 / 图标选择 / 应用分配."""
 
 import os
+import sys
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QSize
@@ -557,10 +558,13 @@ class CategoryPage(QWidget):
                 print(f"自动保存分类失败: {e}")
                 return
 
-        path, _ = QFileDialog.getOpenFileName(
-            self, "选择应用", "C:\\Program Files",
-            "可执行文件 (*.exe);;所有文件 (*)"
+        start_dir = "C:\\Program Files" if sys.platform == "win32" else os.path.expanduser("~")
+        file_filter = (
+            "Windows 可执行文件 (*.exe);;所有文件 (*)"
+            if sys.platform == "win32"
+            else "Linux 可执行文件 (*);;所有文件 (*)"
         )
+        path, _ = QFileDialog.getOpenFileName(self, "选择应用", start_dir, file_filter)
         if not path:
             return
         # 从完整路径中提取纯文件名，兼容 \ 和 / 两种分隔符

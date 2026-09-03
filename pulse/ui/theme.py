@@ -1,7 +1,9 @@
 """主题管理 —— 暗色 / 亮色 / 跟随系统."""
 
 import logging
+import os
 import platform
+import subprocess
 from enum import Enum
 from typing import Optional
 
@@ -576,8 +578,23 @@ class ThemeManager:
 
     @staticmethod
     def _is_system_dark() -> bool:
-        """检测 Windows 系统是否为暗色模式."""
-        if platform.system() != "Windows":
+        """检测当前桌面系统的暗色模式偏好."""
+        system = platform.system()
+        if system == "Linux":
+            try:
+                result = subprocess.run(
+                    ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
+                    check=False,
+                )
+                if result.returncode == 0:
+                    return "prefer-dark" in result.stdout.lower()
+            except (OSError, subprocess.SubprocessError):
+                pass
+            return "dark" in os.environ.get("GTK_THEME", "").lower()
+        if system != "Windows":
             return False
         try:
             import winreg

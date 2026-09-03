@@ -30,7 +30,7 @@ Tai 是一款优秀的开源桌面应用使用统计工具，但其核心痛点�
 | 图表可视化 | pyqtgraph / QtCharts | 使用时长趋势图、饼图等 |
 | 本地存储 | SQLite (SQLAlchemy ORM) | 轻量、无需额外部署 |
 | LLM 集成 | OpenAI API / 本地 Ollama | 支持云端和本地两种模式 |
-| 系统监控 | Windows API (pywin32/ctypes) | 窗口标题、进程名、活跃状态监控 |
+| 系统监控 | Windows：pywin32/ctypes；Linux：X11 xprop / GNOME D-Bus | 窗口标题、进程名、活跃状态监控（Wayland 受桌面隐私策略限制） |
 | 健康数据 | Huawei Health Kit API (可选) | OAuth 2.0 接入 |
 
 ---
@@ -405,7 +405,7 @@ HealthRecord
 | 强调色 | `#7c5cfc` | `#7c5cfc` |
 | 边框 | `#3a3a50` | `#e0e0e8` |
 
-- **跟随系统**：读取 Windows 注册表 `AppsUseLightTheme`，0=暗色 1=亮色
+- **跟随系统**：Windows 读取注册表 `AppsUseLightTheme`；Linux 读取 GNOME `gsettings` / `GTK_THEME`
 - 切换无需重启，实时生效
 
 ### 3.9.3 导航页面
@@ -435,7 +435,7 @@ HealthRecord
 | 隐私 | LLM 调用仅发送进程名/窗口标题，不发送具体内容 |
 | 可用性 | 安装即用，首次启动引导流程不超过 3 步 |
 | 可扩展性 | 插件化架构，健康接入模块可独立启用/禁用 |
-| 兼容性 | 优先支持 Windows 10/11，预留 macOS 扩展可能 |
+| 兼容性 | 支持 Windows 10/11 与常见 Linux 桌面，预留 macOS 扩展可能 |
 
 ---
 
@@ -467,9 +467,9 @@ HealthRecord
 ├─────────────────────────────────────────────┤
 │                  外部接口                      │
 │  ┌──────────┐ ┌──────────┐ ┌─────────────┐  │
-│  │ LLM API  │ │Windows   │ │华为健康 API  │  │
-│  │(OpenAI/  │ │Win32 API │ │(OAuth 2.0)  │  │
-│  │ Ollama)  │ │          │ │             │  │
+│  │ LLM API  │ │桌面窗口  │ │华为健康 API  │  │
+│  │(OpenAI/  │ │按平台选择 │ │(OAuth 2.0)  │  │
+│  │ Ollama)  │ │Win32/X11 │ │             │  │
 │  └──────────┘ └──────────┘ └─────────────┘  │
 └─────────────────────────────────────────────┘
 ```
@@ -477,7 +477,7 @@ HealthRecord
 ### 5.2 核心数据流
 
 ```
-Windows窗口事件 → 追踪服务 → 原始记录(SQLite)
+Windows/Linux 窗口事件 → 追踪服务 → 原始记录(SQLite)
                                 ↓
                       分类服务(LLM) → 分类结果
                                 ↓
@@ -520,7 +520,8 @@ Pulse/
 │   │   └── llm_client.py          ✅ LLM API 客户端（DeepSeek / OpenAI）
 │   └── utils/
 │       ├── config.py              ✅ 配置管理
-│       └── constants.py           ✅ 常量定义
+│       ├── constants.py           ✅ 常量定义
+│       └── window_monitor.py      ✅ Windows/Linux 窗口与空闲采集
 ├── tests/
 │   └── test_tracker.py            ✅ 冒烟测试
 ├── docs/
@@ -534,13 +535,13 @@ Pulse/
 
 ### Phase 1 — MVP（核心闭环）✅ 已完成
 - [x] 项目初始化、目录结构搭建
-- [x] M1: 应用追踪引擎（Windows 窗口监控 + SQLite 存储）
+- [x] M1: 应用追踪引擎（Windows/Linux 窗口监控 + SQLite 存储）
 - [x] M2: LLM 自动分类（DeepSeek/Kimi/OpenAI/Ollama + 缓存 + 手动覆盖）
 - [x] M8: 桌面客户端框架（主窗口、侧边导航、主题系统）
 - [x] M3: 看板三标签（应用柱状图 / 分类饼图 / AI 分析）
 - [x] 系统托盘 + 后台运行
 - [x] M7: 分类管理页面（独立页面、24 预设图标、颜色选择器、文件选择添加应用）
-- [x] 应用图标提取（exe → PNG 缓存 → 柱图显示）
+- [x] 应用图标提取（Windows/Linux 可执行文件 → PNG 缓存 → 柱图显示）
 - [x] Pulse 应用图标（紫色渐变 P 字，窗口 + 托盘）
 - [x] 单例保护 + 数据库自动迁移 + 定期数据清理
 
@@ -549,7 +550,7 @@ Pulse/
 - [x] M4: AI 行为分析（日/周/月报告 + 改进建议，仪表盘 AI 标签页）
 - [x] M2: AI 自动分类（多服务商，启动 + 每小时自动分类热门未分类应用）
 - [x] 系统托盘右键菜单修复（QMenu 暗色主题适配）
-- [x] 开机自启（Windows 注册表）
+- [x] 开机自启（Windows 注册表 + Linux XDG Autostart）
 - [x] 数据清理（按月保留 + 手动触发）
 
 ### Phase 3 — 日历与智能 ⏳ 进行中
@@ -580,7 +581,7 @@ Pulse/
 | # | 议题 | 选项 | 建议 |
 |---|------|------|------|
 | 1 | LLM 默认方案 | OpenAI API vs 本地 Ollama | MVP 先用 OpenAI API（零部署成本），后续加 Ollama |
-| 2 | 窗口追踪技术 | pywin32 vs psutil vs uiautomation | 建议 pywin32 获取窗口标题 + psutil 获取进程名 |
+| 2 | 窗口追踪技术 | Windows API / Linux X11 / GNOME D-Bus | 按平台选择后端，统一返回窗口标题 + 进程名；Wayland 无权限时安全降级 |
 | 3 | UI 框架 | PyQt6 vs PySide6 | 已选 PyQt6，已实现 |
 | 4 | 图表库 | pyqtgraph vs matplotlib vs QtCharts | pyqtgraph 性能好，原生 Qt 集成佳 |
 | 5 | 数据存储 | SQLite vs DuckDB | SQLite 够用，DuckDB 对分析查询有优势但引入额外依赖 |

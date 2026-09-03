@@ -8,7 +8,7 @@
 | 4  | 颜色对话框按钮因主题不可见                                           | ✅                                  | `QColorDialog` / `QFileDialog` 专用 QSS |
 | 5  | 应用图标仍是默认占位图                                             | ✅                                  | 从 DB 查 `executable_path` 提取真实图标 |
 | 6  | 托盘右键菜单不可见                                               | ✅                                  | `QMenu` QSS |
-| 7  | 开机自启设置                                                  | ✅                                  | `auto_start.py` 注册表读写 |
+| 7  | 开机自启设置                                                  | ✅                                  | `auto_start.py` 按平台使用注册表 / XDG Autostart |
 | 8  | 自定义数据清理                                                 | ✅                                  | 设置页按月选择 + 手动触发 |
 | 9  | 复选框看不清                                                  | ✅                                  | `QCheckBox` QSS |
 | 10 | 日历格子看不清                                                 | ✅                                  | Notion 风格 QPainter 网格，今日紫色圆高亮 |

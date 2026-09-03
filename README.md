@@ -3,7 +3,7 @@
 > 自动追踪你的电脑使用时间，AI 帮你分类、分析、给建议，日历帮你规划每一天。
 
 ![Version](https://img.shields.io/badge/version-0.3.4-purple)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -14,7 +14,7 @@
 - **后台静默记录**：自动追踪每个窗口的使用时长，无需手动操作
 - **智能空闲检测**：5 分钟无操作自动暂停计时
 - **浏览器识别**：自动提取浏览器页面标题
-- **应用图标**：自动提取 exe 原生图标，一目了然
+- **应用图标**：自动提取 Windows/Linux 可执行文件图标，一目了然
 
 ### 🤖 AI 智能分类
 - **多服务商支持**：DeepSeek / Kimi (Moonshot) / OpenAI / 本地 Ollama / 自定义
@@ -51,7 +51,7 @@
 
 ## 📦 安装
 
-### 方式一：直接下载（推荐）
+### 方式一：直接下载（Windows）
 
 前往 [Releases 页面](https://github.com/libertasCat/Pulse/releases) 下载：
 
@@ -60,7 +60,26 @@
 > ⚠️ 首次运行 Windows SmartScreen 可能提示"已保护你的电脑"，
 > 点击 **更多信息 → 仍要运行** 即可（未签名应用的正常现象）。
 
-### 方式二：源码运行
+### 方式二：Linux 源码运行
+
+GNOME Wayland 可以启动应用并检测空闲时间，但普通桌面程序无法直接读取全局活动窗口；
+如果需要完整记录每个应用，请在登录界面选择 **Ubuntu on Xorg**。X11 会使用 `xprop`
+获取活动窗口。Ubuntu/Debian 建议安装以下系统工具：
+
+```bash
+sudo apt install python3 python3-venv x11-utils xprintidle
+```
+
+```bash
+git clone https://github.com/libertasCat/Pulse.git
+cd Pulse
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+python main.py
+```
+
+### 方式三：Windows 源码运行
 
 ```bash
 # 需要 Python 3.10+ 和 conda/pip
@@ -81,7 +100,7 @@ python main.py
 ## 🚀 快速上手
 
 ### 第 1 步：启动
-运行 `Pulse.exe`，应用自动开始在后台追踪你的应用使用。
+运行 `Pulse.exe`（Windows）或 `python main.py`（Linux），应用会自动开始在后台追踪你的应用使用。
 
 ### 第 2 步：配置 AI（可选）
 进入 **设置 → AI 配置**：
@@ -129,7 +148,7 @@ python main.py
 | 层级 | 技术 |
 |------|------|
 | 桌面框架 | PyQt6 |
-| 窗口监控 | pywin32 + psutil |
+| 窗口监控 | Windows：pywin32 + ctypes；Linux：GNOME D-Bus / X11 xprop + psutil |
 | 数据存储 | SQLite + SQLAlchemy |
 | AI 接入 | OpenAI SDK（兼容 DeepSeek / Kimi / Ollama） |
 | 图表绘制 | QPainter 自绘（零依赖） |
@@ -148,10 +167,13 @@ A: 检查设置页 API Key 是否正确、余额是否充足；首次使用会�
 A: 不会。所有数据本地存储；AI 调用仅发送进程名和窗口标题用于分类，不发送具体内容。
 
 **Q: 如何卸载？**
-A: 删除程序目录 + `~/.pulse/` 文件夹即可完全移除。
+A: 删除程序目录 + `~/.pulse/` 文件夹即可完全移除；Linux 如启用了自启动，再删除 `~/.config/autostart/pulse.desktop`。
+
+**Q: Linux 下支持哪些桌面？**
+A: Linux X11 可完整获取活动窗口和空闲状态，需要 `x11-utils` 和 `xprintidle`；GNOME Wayland 可启动并检测空闲状态，但由于 Wayland 隐私限制，普通应用无法读取全局活动窗口，Pulse 会安全跳过窗口记录。需要完整追踪时请选择 Xorg 会话。
 
 **Q: 能用于 macOS 吗？**
-A: 目前仅支持 Windows 10/11，macOS 支持在规划中。
+A: 目前支持 Windows 10/11 和常见 Linux 桌面，macOS 支持仍在规划中。
 
 ---
 

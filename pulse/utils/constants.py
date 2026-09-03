@@ -3,8 +3,9 @@
 import os
 from pathlib import Path
 
-# 数据存储路径
-DATA_DIR = Path(os.path.expanduser("~")) / ".pulse"
+# 数据存储路径；默认保持原有 ~/.pulse，可用 PULSE_DATA_DIR 覆盖以便测试/便携部署
+_DEFAULT_DATA_DIR = Path(os.path.expanduser("~")) / ".pulse"
+DATA_DIR = Path(os.environ.get("PULSE_DATA_DIR", str(_DEFAULT_DATA_DIR))).expanduser()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # 数据库
@@ -14,8 +15,13 @@ DB_PATH = DATA_DIR / "pulse.db"
 DEFAULT_POLL_INTERVAL = 1.0       # 轮询间隔（秒）
 DEFAULT_IDLE_THRESHOLD = 300       # 空闲判定阈值（秒，5分钟无操作）
 
-# 已知浏览器列表
+# 已知浏览器列表（保存为不带平台后缀的进程名，兼容 Windows / Linux）
 KNOWN_BROWSERS = {
+    "chrome", "google-chrome", "google-chrome-stable", "chromium",
+    "chromium-browser", "msedge", "microsoft-edge", "firefox",
+    "brave", "brave-browser", "opera", "opera-stable", "vivaldi",
+    "tor", "iexplore", "epiphany", "librewolf",
+    # 保留旧版 Windows 名称，兼容外部调用方直接查询此常量。
     "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe",
     "opera.exe", "vivaldi.exe", "tor.exe", "iexplore.exe",
 }
@@ -23,8 +29,10 @@ KNOWN_BROWSERS = {
 # 浏览器窗口标题后缀（用于提取页面标题）
 BROWSER_TITLE_SUFFIXES = [
     " - Google Chrome",
+    " - Chromium",
     " - Microsoft Edge",
     " - Mozilla Firefox",
+    " — Mozilla Firefox",
     " - Brave",
     " - Opera",
     " - Vivaldi",

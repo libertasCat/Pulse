@@ -1,8 +1,9 @@
 # Pulse 依赖
-pywin32>=310
+# Windows only; Linux uses XDG/Unix APIs and does not install pywin32.
+pywin32>=310; sys_platform == "win32"
 psutil>=6.0
 sqlalchemy>=2.0
 openai>=1.0
-# 以下为后续模块预留
+# Qt itself is cross-platform (Windows / Linux / macOS).
 PyQt6>=6.6
 # httpx>=0.27
