@@ -20,6 +20,8 @@ class NotionGrid(QWidget):
         self._year = date.today().year
         self._month = date.today().month
         self._today = date.today()
+        self._first_wd = date(self._year, self._month, 1).weekday()
+        self._last_day = calendar.monthrange(self._year, self._month)[1]
         self._tasks: list = []
         self._checklist_summaries: dict = {}  # task_id → (已完成项数, 总项数)
         self._hover_day = 0
@@ -48,12 +50,15 @@ class NotionGrid(QWidget):
         self._year = year
         self._month = month
         self._today = date.today()  # 刷新"今日"高亮
+        self._first_wd = date(year, month, 1).weekday()
+        self._last_day = calendar.monthrange(year, month)[1]
         self._checklist_summaries = checklist_summaries or {}
         self._tasks = []
         for i, row in enumerate(tasks):
             task = row[0]
             end = task.end_date or task.date
             self._tasks.append((task.id, task.date, end, task.title))
+        self.updateGeometry()  # 行高可能变化，通知外层滚动区重新评估
         self.update()
 
     def _clamp(self, start: date, end: date) -> tuple[int, int]:
@@ -72,6 +77,25 @@ class NotionGrid(QWidget):
 
     # ── 布局 ────────────────────────────────────────────
 
+    def _natural_heights(self) -> list[float]:
+        """自然行高：日期头 34px + 任务条堆叠，仅依赖数据、不随控件高度压缩."""
+        task_rows = self._get_stack()
+        max_stack_per_row: dict[int, int] = {}
+        for tid, sd, ed, title in self._tasks:
+            s_day, e_day = self._clamp(sd, ed)
+            if s_day <= 0:
+                continue
+            sr = task_rows.get(tid, 0)
+            # 跨周任务在每个经过的日历行中都会绘制同一个堆叠槽位。
+            # 每一行都必须为该槽位预留高度，否则较高槽位会越过下一行日期头。
+            start_row = (s_day + self._first_wd - 1) // 7
+            end_row = (e_day + self._first_wd - 1) // 7
+            for calendar_row in range(start_row, end_row + 1):
+                max_stack_per_row[calendar_row] = max(
+                    max_stack_per_row.get(calendar_row, 0), sr + 1
+                )
+        return [max(60, 34 + max_stack_per_row.get(r, 0) * 22 + 4) for r in range(6)]
+
     def _layout(self):
         _, self._last_day = calendar.monthrange(self._year, self._month)
         self._first_wd = date(self._year, self._month, 1).weekday()
@@ -79,29 +103,17 @@ class NotionGrid(QWidget):
         w = max(self.width(), 1)
         self._cell_w = w / 7
 
-        # 计算每行的最大任务堆叠数 → 可变行高
-        task_rows = self._get_stack()
-        max_stack_per_row: dict[int, int] = {}
-        for tid, sd, ed, title in self._tasks:
-            s_day, _ = self._clamp(sd, ed)
-            if s_day <= 0:
-                continue
-            s_row = (s_day + self._first_wd - 1) // 7
-            sr = task_rows.get(tid, 0)
-            max_stack_per_row[s_row] = max(max_stack_per_row.get(s_row, 0), sr + 1)
-
-        # 基础行高：日期头 34px + 任务条堆叠
-        base = [max(60, 34 + max_stack_per_row.get(r, 0) * 22 + 4) for r in range(6)]
-
-        # 按可用高度等比缩放（保底最小 50px）
+        natural = self._natural_heights()
+        total = sum(natural)
         avail = max(self.height() - self._header_h, 1)
-        total = sum(base)
-        scale = avail / total if total > 0 else 1
-        self._row_heights = [max(50, h * scale) for h in base]
-        # 缩放后再归一化，避免总和超出
-        total2 = sum(self._row_heights)
-        if total2 > 0 and total2 != avail:
-            self._row_heights = [h * avail / total2 for h in self._row_heights]
+
+        if total <= avail:
+            # 空间充足：按可用高度等比放大占满（与之前行为一致）
+            scale = avail / total if total > 0 else 1
+            self._row_heights = [h * scale for h in natural]
+        else:
+            # 空间不足：保持自然高度不压缩，由外层滚动区域上下滚动查看
+            self._row_heights = natural
 
     def _row_y(self, row: int) -> float:
         """第 row 行的 y 坐标."""
@@ -494,6 +506,12 @@ class NotionGrid(QWidget):
         else:
             self.update()
 
-    def minimumSizeHint(self):
+    def sizeHint(self):
         from PyQt6.QtCore import QSize
-        return QSize(560, 400)
+        return self.minimumSizeHint()
+
+    def minimumSizeHint(self):
+        """按数据给出自然总高（表头 + 6 行自然高度），供滚动区决定是否需要上下滚动."""
+        from PyQt6.QtCore import QSize
+        header = getattr(self, "_header_h", 30)
+        return QSize(560, int(header + sum(self._natural_heights())))

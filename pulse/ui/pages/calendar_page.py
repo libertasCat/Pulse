@@ -4,7 +4,9 @@ from datetime import date, datetime
 from typing import Optional
 
 from PyQt6.QtCore import QTimer, Qt  # type: ignore
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget  # type: ignore
+from PyQt6.QtWidgets import (  # type: ignore
+    QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+)
 
 from pulse.db.repository import Repository
 from pulse.ui.widgets.notion_grid import NotionGrid
@@ -32,13 +34,18 @@ class CalendarPage(QWidget):
         # ── 导航 ──
         self._build_nav(root)
 
-        # ── 网格 ──
+        # ── 网格（放入滚动区：任务多的行保持自然高度，纵向滚轮查看，不再挤压其他行） ──
         self._grid = NotionGrid()
         self._grid.on_task_click = self._open_detail
         self._grid.on_cell_add = self._on_cell_add
         self._grid.on_task_drag = self._on_task_drag
         self._grid.on_task_left_drag = self._on_task_left_drag
-        root.addWidget(self._grid, stretch=1)
+
+        self._grid_scroll = QScrollArea()
+        self._grid_scroll.setWidgetResizable(True)
+        self._grid_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._grid_scroll.setWidget(self._grid)
+        root.addWidget(self._grid_scroll, stretch=1)
 
         # ── 弹出创建 ──
         self._popup = TaskCreatePopup(self)
