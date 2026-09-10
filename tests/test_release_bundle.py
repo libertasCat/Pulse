@@ -1,4 +1,4 @@
-"""Windows 发布目录完整性检查。"""
+"""Windows 发布配置完整性检查。"""
 
 from pathlib import Path
 
@@ -13,14 +13,11 @@ REQUIRED_QT_RUNTIME_DLLS = {
 }
 
 
-def assert_release_bundle(root: Path) -> None:
-    qt_bin = root / "_internal" / "PyQt6" / "Qt6" / "bin"
-    missing = sorted(name for name in REQUIRED_QT_RUNTIME_DLLS if not (qt_bin / name).is_file())
-    assert not missing, f"发布包缺少 Qt 运行库: {', '.join(missing)}"
-    assert (root / "Pulse.exe").is_file(), "发布包缺少 Pulse.exe"
-
-
 if __name__ == "__main__":
     project_root = Path(__file__).resolve().parents[1]
-    assert_release_bundle(project_root / "dist" / "Pulse")
-    print("发布目录 DLL 完整性检查通过")
+    spec = (project_root / "Pulse.spec").read_text(encoding="utf-8")
+    missing = sorted(name for name in REQUIRED_QT_RUNTIME_DLLS if repr(name) not in spec)
+    assert not missing, f"打包配置缺少 Qt 运行库: {', '.join(missing)}"
+    assert "exclude_binaries=False" in spec, "Windows 发布包必须使用单文件模式"
+    assert "COLLECT(" not in spec, "单文件模式不应创建 COLLECT 目录"
+    print("单文件发布配置完整性检查通过")
