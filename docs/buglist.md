@@ -66,3 +66,4 @@
 | 62 | 跨周任务在后续周的高堆叠槽位越过下一行日期头 | ✅ | 自然行高计算覆盖任务经过的每一周，为跨周分段的统一堆叠槽位逐行预留高度 |
 | 63 | Windows 发布包导入 `PyQt6.QtGui` 时 DLL 加载失败 | ✅ | 打包配置显式携带 QtGui 所需 VC++/Direct3D 运行库，并增加发布目录完整性检查 |
 | 64 | 多文件发布包解压不完整或与旧 `_internal` 混用后仍无法启动 | ✅ | Windows 发布改为 PyInstaller 单文件模式，Python、Qt 与运行库统一由 `Pulse.exe` 自解压加载 |
+| 65 | Conda 内较旧 VC++ DLL 遮蔽系统新版运行库，导致 `QtGui.pyd` 加载失败 | ✅ | 发布包显式采用 System32 中已验证正常的 VC++ Redistributable 版本，并与 v0.3.4 正常包逐文件对比 |

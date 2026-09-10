@@ -1,22 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+import os
 import sys
 
-import PyQt6
-
-
-qt_bin = Path(PyQt6.__file__).resolve().parent / 'Qt6' / 'bin'
 conda_bin = Path(sys.prefix) / 'Library' / 'bin'
+system32 = Path(os.environ['WINDIR']) / 'System32'
 
-# PyInstaller 会收集 Qt6Core/Gui/Widgets，但会把以下 DLL 当作系统运行库而省略。
-# 在未安装 VC++ 开发环境的 Windows 机器上，这会导致导入 PyQt6.QtGui 失败。
-qt_runtime_dlls = [
+# 固定使用 Windows 已安装的 VC++ Redistributable，不使用 Conda 环境中可能回退的版本。
+# QtGui.pyd 对较新运行库符号有依赖；较旧的 app-local DLL 会遮蔽系统 DLL 并导致导入失败。
+vc_runtime_dlls = [
     'concrt140.dll',
-    'd3dcompiler_47.dll',
+    'msvcp140.dll',
     'msvcp140_1.dll',
+    'msvcp140_2.dll',
     'msvcp140_atomic_wait.dll',
     'msvcp140_codecvt_ids.dll',
+    'vcruntime140.dll',
+    'vcruntime140_1.dll',
     'vcruntime140_threads.dll',
 ]
 
@@ -25,8 +26,8 @@ binaries = [
     (str(conda_bin / 'libssl-3-x64.dll'), '.'),
 ]
 binaries += [
-    (str(qt_bin / dll), 'PyQt6/Qt6/bin')
-    for dll in qt_runtime_dlls
+    (str(system32 / dll), '.')
+    for dll in vc_runtime_dlls
 ]
 
 a = Analysis(
@@ -47,10 +48,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
-    exclude_binaries=False,
+    exclude_binaries=True,
     name='Pulse',
     debug=False,
     bootloader_ignore_signals=False,
@@ -62,4 +61,13 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='Pulse',
 )
