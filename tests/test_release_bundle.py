@@ -22,6 +22,9 @@ if __name__ == "__main__":
     missing = sorted(name for name in REQUIRED_QT_RUNTIME_DLLS if repr(name) not in spec)
     assert not missing, f"打包配置缺少 Qt 运行库: {', '.join(missing)}"
     assert "system32" in spec, "VC++ 运行库必须来自已安装的系统 Redistributable"
+    assert "os.environ['PATH']" in spec, "构建时必须限制 DLL 搜索路径，避免外部 Qt/ICU 污染"
     assert "exclude_binaries=True" in spec, "Windows 完整版应使用 onedir 模式"
     assert "COLLECT(" in spec, "onedir 模式必须创建 COLLECT 目录"
+    main = (project_root / "main.py").read_text(encoding="utf-8")
+    assert "--self-test" in main, "发布包必须提供隔离运行时自检入口"
     print("发布配置完整性检查通过")

@@ -4,8 +4,14 @@ from pathlib import Path
 import os
 import sys
 
-conda_bin = Path(sys.prefix) / 'Library' / 'bin'
+conda_bin = Path(sys.base_prefix) / 'Library' / 'bin'
 system32 = Path(os.environ['WINDIR']) / 'System32'
+# PyInstaller 会沿 PATH 搜索间接 DLL。构建机上其他工具携带的 ICU/Qt DLL
+# 可能被错误收集，因此发布构建只允许当前 Python、Conda 运行库和系统目录。
+os.environ['PATH'] = os.pathsep.join([
+    str(Path(sys.executable).parent), str(conda_bin), str(system32),
+    str(Path(os.environ['WINDIR'])),
+])
 
 # 固定使用 Windows 已安装的 VC++ Redistributable，不使用 Conda 环境中可能回退的版本。
 # QtGui.pyd 对较新运行库符号有依赖；较旧的 app-local DLL 会遮蔽系统 DLL 并导致导入失败。
