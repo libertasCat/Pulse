@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import QApplication
 from pulse.ui.widgets.notion_grid import NotionGrid
 
 
-def test_cross_week_task_reserves_stack_height_in_every_row():
-    """跨周任务在后续周仍处于高槽位时，不得越过下一行日期头。"""
+def test_cross_week_task_reflows_in_each_calendar_row():
+    """跨周任务应按自然周重新压紧，不能把首周高槽位带到月底。"""
     app = QApplication.instance() or QApplication([])
     grid = NotionGrid()
     grid._year = 2026
@@ -21,13 +21,21 @@ def test_cross_week_task_reserves_stack_height_in_every_row():
         (3, date(2026, 9, 3), date(2026, 9, 30), "github学习LLM，agent"),
     ]
 
-    stack_row = grid._get_stack()[3]
-    assert stack_row == 2
+    task_rows = grid._get_stack()
+    assert task_rows[(3, 0)] == 2
+    assert task_rows[(3, 1)] == 2
+    assert task_rows[(3, 2)] == 0
+    assert task_rows[(3, 3)] == 0
+    assert task_rows[(3, 4)] == 0
 
     heights = grid._natural_heights()
-    required_height = 34 + (stack_row + 1) * 22 + 4
-    for calendar_row in range(5):
-        assert heights[calendar_row] >= required_height
+    crowded_height = 34 + 3 * 22 + 4
+    compact_height = 34 + 1 * 22 + 4
+    assert heights[0] >= crowded_height
+    assert heights[1] >= crowded_height
+    assert heights[2] == compact_height
+    assert heights[3] == compact_height
+    assert heights[4] == compact_height
 
     grid.deleteLater()
     del app

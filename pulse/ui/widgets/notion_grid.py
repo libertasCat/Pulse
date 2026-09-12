@@ -85,12 +85,12 @@ class NotionGrid(QWidget):
             s_day, e_day = self._clamp(sd, ed)
             if s_day <= 0:
                 continue
-            sr = task_rows.get(tid, 0)
-            # 跨周任务在每个经过的日历行中都会绘制同一个堆叠槽位。
-            # 每一行都必须为该槽位预留高度，否则较高槽位会越过下一行日期头。
+            # 每个自然周独立堆叠。任务在前一周有冲突时可能位于较高槽位，
+            # 到下一周没有冲突后应回到第一槽，避免后续周留下大块空白。
             start_row = (s_day + self._first_wd - 1) // 7
             end_row = (e_day + self._first_wd - 1) // 7
             for calendar_row in range(start_row, end_row + 1):
+                sr = task_rows.get((tid, calendar_row), 0)
                 max_stack_per_row[calendar_row] = max(
                     max_stack_per_row.get(calendar_row, 0), sr + 1
                 )
@@ -140,24 +140,41 @@ class NotionGrid(QWidget):
         day = row * 7 + col + 1 - self._first_wd
         return day if 1 <= day <= self._last_day else 0
 
-    def _get_stack(self) -> dict[int, int]:
-        """计算每个任务的堆叠行 (task_id → row_index)，跨月任务按裁剪后范围计算."""
-        stack: dict[int, list[int]] = {}
-        rows: dict[int, int] = {}
-        for tid, sd, ed, title in sorted(self._tasks, key=lambda t: (t[1], t[2])):
-            s, e = self._clamp(sd, ed)
-            if s <= 0:
+    def _get_stack(self) -> dict[tuple[int, int], int]:
+        """计算任务在每个自然周内的槽位：``(task_id, calendar_row) -> slot``。
+
+        月视图中的跨周任务会拆成多段。每一周必须独立压紧，否则任务在首周
+        因冲突被分到高槽位后，会在整个月一直占用同一槽位，看起来像任务条
+        错行，甚至在月底空白区域继续绘制。
+        """
+        rows: dict[tuple[int, int], int] = {}
+        ordered = sorted(self._tasks, key=lambda t: (t[1], t[2], t[0]))
+        for calendar_row in range(6):
+            week_first = max(1, calendar_row * 7 + 1 - self._first_wd)
+            week_last = min(self._last_day, (calendar_row + 1) * 7 - self._first_wd)
+            if week_first > week_last:
                 continue
-            assigned = None
-            for row_idx in range(20):
-                if not any(d in stack and row_idx in stack[d] for d in range(s, e + 1)):
-                    assigned = row_idx
-                    break
-            if assigned is None:
+
+            occupied: dict[int, set[int]] = {}
+            for tid, sd, ed, title in ordered:
+                s, e = self._clamp(sd, ed)
+                seg_start = max(s, week_first)
+                seg_end = min(e, week_last)
+                if s <= 0 or seg_start > seg_end:
+                    continue
+
                 assigned = 0
-            rows[tid] = assigned
-            for d in range(s, e + 1):
-                stack.setdefault(d, []).append(assigned)
+                while assigned < 20 and any(
+                    assigned in occupied.get(day, set())
+                    for day in range(seg_start, seg_end + 1)
+                ):
+                    assigned += 1
+                if assigned >= 20:
+                    assigned = 0
+
+                rows[(tid, calendar_row)] = assigned
+                for day in range(seg_start, seg_end + 1):
+                    occupied.setdefault(day, set()).add(assigned)
         return rows
 
     # ── 绘制 ────────────────────────────────────────────
@@ -237,7 +254,6 @@ class NotionGrid(QWidget):
             if s_day <= 0:
                 continue
 
-            stack_row = task_rows.get(tid, 0)
             is_hover = (tid == self._hover_task_id)
             pen_color = "#7c5cfc" if is_hover else "#3a3a50"
             font_weight = QFont.Weight.Bold if is_hover else QFont.Weight.Normal
@@ -260,6 +276,7 @@ class NotionGrid(QWidget):
                 cur_row += 1
 
             for seg_idx, (seg_row, seg_start, seg_end) in enumerate(segments):
+                stack_row = task_rows.get((tid, seg_row), 0)
                 s_col = (seg_start + self._first_wd - 1) % 7
                 e_col = (seg_end + self._first_wd - 1) % 7
                 bx = s_col * cw + 2
@@ -372,7 +389,8 @@ class NotionGrid(QWidget):
                 s_day, e_day = self._clamp(sd, ed)
                 if not (s_day <= self._hover_day <= e_day):
                     continue
-                sr = task_rows.get(tid, 0)
+                calendar_row = (self._hover_day + self._first_wd - 1) // 7
+                sr = task_rows.get((tid, calendar_row), 0)
                 ty = cy + 34 + sr * 22
                 if ty <= y < ty + 20:
                     self._hover_task_id = tid
@@ -423,7 +441,8 @@ class NotionGrid(QWidget):
             s_day, e_day = self._clamp(sd, ed)
             if not (s_day <= day <= e_day):
                 continue
-            sr = task_rows.get(tid, 0)
+            calendar_row = (day + self._first_wd - 1) // 7
+            sr = task_rows.get((tid, calendar_row), 0)
             ty = cy + 34 + sr * 22
             if ty <= y < ty + 20:
                 _, e_day_c = self._clamp(sd, ed)
@@ -486,7 +505,8 @@ class NotionGrid(QWidget):
             s_day, e_day = self._clamp(sd, ed)
             if not (s_day <= day <= e_day):
                 continue
-            sr = task_rows.get(tid, 0)
+            calendar_row = (day + self._first_wd - 1) // 7
+            sr = task_rows.get((tid, calendar_row), 0)
             ty = cy + 34 + sr * 22
             if ty <= y < ty + 20:
                 on_task = True
