@@ -35,8 +35,35 @@ def run():
         QTimer.singleShot(300, app.quit)
         app.exec()
         assert not grid.grab().isNull()
+        import tempfile
+        from PyQt6.QtGui import QImage, QColor
+        from PyQt6.QtCore import QMimeData
+        from pulse.db.repository import Repository
+        from pulse.ui.widgets.task_detail_dialog import TaskDetailDialog
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Repository(str(Path(directory) / 'pulse.db'))
+            repo.initialize_db()
+            task = repo.create_task(date.today(), 'Image release check')
+            repo.add_task_field(task.id, 'Paste here')
+            dialog = TaskDetailDialog(task.id, repo)
+            image = QImage(120, 240, QImage.Format.Format_ARGB32)
+            image.fill(QColor('red'))
+            mime = QMimeData()
+            mime.setImageData(image)
+            dialog._field_edits[0].insertFromMimeData(mime)
+            assert len(repo.get_task_by_id(task.id).fields) == 2
+            dialog.close()
+            reopened = TaskDetailDialog(task.id, repo)
+            reopened.show()
+            app.processEvents()
+            assert not reopened.grab().isNull()
+            assert reopened._fields_layout.count() == 2
+            reopened.close()
+            repo.delete_task(task.id)
+            assert not list(repo._attachment_root.glob('*.png'))
+            repo._engine.dispose()
         result = {'ok': True, 'version': __version__, 'ssl': ssl.OPENSSL_VERSION,
-                  'qt_platform': app.platformName()}
+                  'qt_platform': app.platformName(), 'task_images': 'passed'}
     except BaseException:
         result['error'] = traceback.format_exc()
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')

@@ -2,7 +2,7 @@
 
 > 自动追踪你的电脑使用时间，AI 帮你分类、分析、给建议，日历帮你规划每一天。
 
-![Version](https://img.shields.io/badge/version-0.3.10-purple)
+![Version](https://img.shields.io/badge/version-0.3.11-purple)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -36,6 +36,10 @@
 - **功能清单**：多组清单 + 带勾选框小项，全部勾选后清单标记为已完成（任务条同步显示进度 / ✓）
 - **评论管理**：评论卡片右下角 ⋮ 菜单，支持编辑与删除
 - **字段自适应**：文本框随内容自动增高（Notion 同款体验）
+- **图片内容块**：在字段中按 Ctrl+V 粘贴截图，在字段下方插入图片；也可使用“添加图片”导入本地图片。支持点击查看原图和删除，关闭任务后自动恢复。
+
+任务图片保存在数据目录下的 `attachments/calendar/`，数据库保存相对路径。
+备份或迁移时请同时保存 `pulse.db` 和整个 `attachments` 文件夹。
 
 ### 🧠 AI 行为分析
 - **智能报告**：每日 / 每周 / 每月使用分析
@@ -55,7 +59,7 @@
 
 前往 [Releases 页面](https://github.com/libertasCat/Pulse/releases) 下载：
 
-- **`Pulse_v0.3.10.zip`** — Windows 完整版，解压到新目录后运行 `Pulse.exe`
+- **`Pulse_v0.3.11.zip`** — Windows 完整版，解压到新目录后运行 `Pulse.exe`
 
 > ⚠️ 首次运行 Windows SmartScreen 可能提示"已保护你的电脑"，
 > 点击 **更多信息 → 仍要运行** 即可（未签名应用的正常现象）。

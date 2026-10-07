@@ -103,6 +103,10 @@ class CalendarTaskField(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(Integer, ForeignKey("calendar_tasks.id"), nullable=False, comment="所属任务")
     content = Column(Text, default="", comment="文本内容")
+    kind = Column(String(16), nullable=False, default="text")
+    image_path = Column(Text, nullable=True, comment="附件相对路径")
+    image_width = Column(Integer, nullable=True)
+    image_height = Column(Integer, nullable=True)
     sort_order = Column(Integer, default=0, comment="排序")
     created_at = Column(DateTime, default=datetime.now)
 

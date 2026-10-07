@@ -4,6 +4,8 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime, date, timedelta
 from typing import Optional, List
+from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import Session as SASession, sessionmaker
@@ -21,6 +23,7 @@ class Repository:
     """统一数据访问入口."""
 
     def __init__(self, db_path: str = str(DB_PATH)):
+        self._attachment_root = Path(db_path).resolve().parent / 'attachments' / 'calendar'
         self._engine = create_engine(
             f"sqlite:///{db_path}",
             connect_args={"check_same_thread": False},
@@ -41,6 +44,13 @@ class Repository:
             # 检查 app_sessions 是否有 executable_path 列
             from sqlalchemy import inspect
             inspector = inspect(self._engine)
+            field_cols = {c['name'] for c in inspector.get_columns('calendar_task_fields')}
+            for name, definition in {
+                'kind': "VARCHAR(16) NOT NULL DEFAULT 'text'",
+                'image_path': 'TEXT', 'image_width': 'INTEGER', 'image_height': 'INTEGER',
+            }.items():
+                if name not in field_cols:
+                    s.execute(text(f'ALTER TABLE calendar_task_fields ADD COLUMN {name} {definition}'))
             columns = {c["name"] for c in inspector.get_columns("app_sessions")}
             if "executable_path" not in columns:
                 s.execute(text("ALTER TABLE app_sessions ADD COLUMN executable_path VARCHAR(1024)"))
@@ -395,8 +405,56 @@ class Repository:
             task = s.query(CalendarTask).filter(CalendarTask.id == task_id).first()
             if not task:
                 return False
+            images = [f.image_path for f in task.fields if f.kind == 'image']
             s.delete(task)
-            return True
+        for relative in images:
+            self._remove_image(relative)
+        return True
+
+    def image_file(self, relative: str) -> Path:
+        path = (self._attachment_root / relative).resolve()
+        if path.parent != self._attachment_root.resolve():
+            raise ValueError('无效的图片附件路径')
+        return path
+
+    def _remove_image(self, relative):
+        if relative:
+            try:
+                self.image_file(relative).unlink(missing_ok=True)
+            except OSError:
+                logger.exception('清理图片附件失败: %s', relative)
+
+    def add_task_image(self, task_id, image, after_field_id=None):
+        """复制图片到数据目录，数据库提交失败时清理文件。"""
+        if image.isNull():
+            raise ValueError('无法读取图片')
+        if image.width() * image.height() > 40_000_000:
+            raise ValueError('图片过大，请使用不超过 4000 万像素的图片')
+        self._attachment_root.mkdir(parents=True, exist_ok=True)
+        relative = uuid4().hex + '.png'
+        path = self.image_file(relative)
+        try:
+            if not image.save(str(path), 'PNG'):
+                raise OSError('图片保存失败')
+            with self.session() as s:
+                if not s.get(CalendarTask, task_id):
+                    raise ValueError('任务不存在')
+                fields = s.query(CalendarTaskField).filter_by(task_id=task_id).order_by(
+                    CalendarTaskField.sort_order, CalendarTaskField.id).all()
+                index = len(fields)
+                if after_field_id is not None:
+                    index = next((i + 1 for i, f in enumerate(fields) if f.id == after_field_id), index)
+                field = CalendarTaskField(task_id=task_id, kind='image', content='',
+                    image_path=relative, image_width=image.width(), image_height=image.height())
+                fields.insert(index, field)
+                for order, item in enumerate(fields, 1):
+                    item.sort_order = order
+                s.add(field)
+                s.flush()
+            return field
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
 
     def add_task_field(self, task_id: int, content: str = "") -> CalendarTaskField:
         with self.session() as s:
@@ -417,8 +475,13 @@ class Repository:
 
     def delete_task_field(self, field_id: int) -> bool:
         with self.session() as s:
-            count = s.query(CalendarTaskField).filter(CalendarTaskField.id == field_id).delete()
-            return count > 0
+            field = s.get(CalendarTaskField, field_id)
+            if field is None:
+                return False
+            relative = field.image_path if field.kind == 'image' else None
+            s.delete(field)
+        self._remove_image(relative)
+        return True
 
     def add_comment(self, task_id: int, content: str, author: str = "我") -> CalendarComment:
         with self.session() as s:

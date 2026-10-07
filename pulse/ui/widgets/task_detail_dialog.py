@@ -4,10 +4,11 @@ from datetime import date, datetime
 from typing import Optional
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal  # type: ignore
+from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (  # type: ignore
     QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QScrollArea, QTextEdit,
-    QTimeEdit, QVBoxLayout, QWidget,
+    QTimeEdit, QVBoxLayout, QWidget, QFileDialog, QMessageBox, QApplication,
 )
 
 from pulse.db.repository import Repository
@@ -56,6 +57,53 @@ class _FieldEdit(QTextEdit):
 
     def wheelEvent(self, event):
         event.ignore()  # 让事件冒泡到对话框的滚动区域
+
+    imagePasted = pyqtSignal(object)
+
+    def canInsertFromMimeData(self, source):
+        return source.hasImage() or source.hasUrls() or super().canInsertFromMimeData(source)
+
+    def insertFromMimeData(self, source):
+        if source.hasImage():
+            value = source.imageData()
+            image = value.toImage() if isinstance(value, QPixmap) else QImage(value)
+            self.imagePasted.emit(image)
+        elif source.hasUrls() and any(url.isLocalFile() for url in source.urls()):
+            images = [QImage(url.toLocalFile()) for url in source.urls() if url.isLocalFile()]
+            valid = [image for image in images if not image.isNull()]
+            if valid:
+                self.imagePasted.emit(valid)
+            else:
+                super().insertFromMimeData(source)
+        else:
+            super().insertFromMimeData(source)
+
+
+class _ImagePreview(QLabel):
+    clicked = pyqtSignal()
+
+    def __init__(self, path):
+        super().__init__()
+        self._pixmap = QPixmap(str(path))
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumWidth(1)
+        if self._pixmap.isNull():
+            self.setText('图片文件缺失或无法读取')
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not self._pixmap.isNull():
+            width = max(1, min(self.width(), self._pixmap.width()))
+            height = max(1, round(width * self._pixmap.height() / self._pixmap.width()))
+            self.setFixedHeight(height)
+            self.setPixmap(self._pixmap.scaled(width, height,
+                Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
 
 
 class _MenuOption(QFrame):
@@ -265,6 +313,14 @@ class TaskDetailDialog(QDialog):
         add_field_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_field_btn.clicked.connect(self._add_field)
         inner_lo.addWidget(add_field_btn)
+        image_row = QHBoxLayout()
+        import_btn = QPushButton('+ 添加图片')
+        import_btn.clicked.connect(self._import_images)
+        paste_btn = QPushButton('粘贴图片')
+        paste_btn.clicked.connect(self._paste_image)
+        image_row.addWidget(import_btn)
+        image_row.addWidget(paste_btn)
+        inner_lo.addLayout(image_row)
 
         # ── 清单（功能清单模块） ──
         inner_lo.addWidget(self._mk_label("清单"))
@@ -337,7 +393,66 @@ class TaskDetailDialog(QDialog):
         if not self._task:
             return
         for field in self._task.fields:
-            self._add_field_widget(field.id, field.content)
+            if field.kind == 'image':
+                self._add_image_widget(field)
+            else:
+                self._add_field_widget(field.id, field.content)
+
+    def _insert_image(self, image, after_field_id=None):
+        if isinstance(image, list):
+            for item in image:
+                after_field_id = self._insert_image(item, after_field_id)
+            return after_field_id
+        try:
+            field = self._repo.add_task_image(self._task_id, image, after_field_id)
+            self._rebuild_fields()
+            return field.id
+        except Exception as exc:
+            QMessageBox.warning(self, '图片导入失败', str(exc))
+            return after_field_id
+
+    def _paste_image(self):
+        image = QApplication.clipboard().image()
+        if image.isNull():
+            QMessageBox.information(self, '粘贴图片', '请先复制截图或图片，也可以使用“添加图片”。')
+        else:
+            self._insert_image(image)
+
+    def _import_images(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, '选择图片', '',
+            '图片 (*.png *.jpg *.jpeg *.bmp *.webp)')
+        for path in paths:
+            self._insert_image(QImage(path))
+
+    def _add_image_widget(self, field):
+        frame = QFrame()
+        layout = QVBoxLayout(frame)
+        preview = _ImagePreview(self._repo.image_file(field.image_path))
+        preview.clicked.connect(lambda: self._show_image(field.image_path))
+        layout.addWidget(preview)
+        row = QHBoxLayout()
+        row.addWidget(QLabel(f'图片 · {field.image_width} × {field.image_height} · 点击放大'))
+        row.addStretch()
+        delete = QPushButton('删除图片')
+        delete.clicked.connect(lambda: self._delete_field(field.id))
+        row.addWidget(delete)
+        layout.addLayout(row)
+        self._fields_layout.addWidget(frame)
+
+    def _show_image(self, relative):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('图片预览')
+        dialog.resize(900, 700)
+        layout = QVBoxLayout(dialog)
+        scroll = QScrollArea()
+        label = QLabel()
+        label.setPixmap(QPixmap(str(self._repo.image_file(relative))))
+        scroll.setWidget(label)
+        layout.addWidget(scroll)
+        close = QPushButton('关闭')
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
 
     @staticmethod
     def _resize_to_content(edit: QTextEdit):
@@ -363,6 +478,8 @@ class TaskDetailDialog(QDialog):
         lo.setSpacing(4)
 
         edit = _FieldEdit()
+        edit.setAcceptRichText(False)
+        edit.imagePasted.connect(lambda image: self._insert_image(image, fid))
         edit.setPlainText(content)
         edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         edit.setStyleSheet(
