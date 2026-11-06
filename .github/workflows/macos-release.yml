@@ -63,7 +63,7 @@ jobs:
           TARGET_ARCH: ${{ matrix.arch }}
         run: |
           lipo dist/Pulse.app/Contents/MacOS/Pulse -verify_arch "$TARGET_ARCH"
-          dist/Pulse.app/Contents/MacOS/Pulse --self-test "$RUNNER_TEMP/self-test.json"
+          dist/Pulse.app/Contents/MacOS/Pulse --self-test "$RUNNER_TEMP/self-test.json" || { cat "$RUNNER_TEMP/self-test.json"; exit 1; }
           python -c 'import json, os; from pathlib import Path; r=json.loads((Path(os.environ["RUNNER_TEMP"])/"self-test.json").read_text()); print(r); assert r["ok"] and r["version"] == os.environ["RELEASE_TAG"].removeprefix("v")'
       - name: Archive and verify extracted app
         env:
@@ -71,7 +71,7 @@ jobs:
         run: |
           ditto -c -k --sequesterRsrc --keepParent dist/Pulse.app "dist/Pulse_${RELEASE_TAG}_macOS_${TARGET_ARCH}.zip"
           ditto -x -k "dist/Pulse_${RELEASE_TAG}_macOS_${TARGET_ARCH}.zip" "$RUNNER_TEMP/extracted"
-          "$RUNNER_TEMP/extracted/Pulse.app/Contents/MacOS/Pulse" --self-test "$RUNNER_TEMP/extracted-test.json"
+          "$RUNNER_TEMP/extracted/Pulse.app/Contents/MacOS/Pulse" --self-test "$RUNNER_TEMP/extracted-test.json" || { cat "$RUNNER_TEMP/extracted-test.json"; exit 1; }
           python -c 'import json, os; from pathlib import Path; r=json.loads((Path(os.environ["RUNNER_TEMP"])/"extracted-test.json").read_text()); print(r); assert r["ok"]'
       - name: Upload verified release asset
         env:
