@@ -1,5 +1,7 @@
 """Notion 风格月历网格 —— 纯 QPainter，可变行高，任务堆叠."""
 
+from pulse.utils.constants import UI_FONT_FAMILY
+
 import calendar
 from datetime import date
 from typing import Callable, Optional
@@ -189,7 +191,7 @@ class NotionGrid(QWidget):
         painter.fillRect(0, 0, w, self.height(), QColor("#1a1a2e"))
 
         # 星期头
-        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        painter.setFont(QFont(UI_FONT_FAMILY, 10, QFont.Weight.Bold))
         for col, name in enumerate(["一", "二", "三", "四", "五", "六", "日"]):
             painter.setPen(QColor("#f44336" if col >= 5 else "#808098"))
             painter.drawText(QRectF(col * cw, 0, cw, self._header_h), Qt.AlignmentFlag.AlignCenter, name)
@@ -222,7 +224,7 @@ class NotionGrid(QWidget):
                     painter.setPen(QColor("#ffffff"))
                 else:
                     painter.setPen(QColor("#ffffff"))
-                painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold if is_today else QFont.Weight.Medium))
+                painter.setFont(QFont(UI_FONT_FAMILY, 12, QFont.Weight.Bold if is_today else QFont.Weight.Medium))
                 painter.drawText(day_rect if is_today else QRectF(x + cw - 32, y + 4, 28, 28),
                                  Qt.AlignmentFlag.AlignCenter, str(day_num))
 
@@ -248,7 +250,7 @@ class NotionGrid(QWidget):
 
         # ── 任务条（按行分段绘制，跨行任务每行都显示） ──
         task_rows = self._get_stack()
-        painter.setFont(QFont("Segoe UI", 10))
+        painter.setFont(QFont(UI_FONT_FAMILY, 10))
         for tid, sd, ed, title in self._tasks:
             s_day, e_day = self._clamp(sd, ed)
             if s_day <= 0:
@@ -295,7 +297,7 @@ class NotionGrid(QWidget):
 
                 # 标题每段都画（跨行时每行第一格显示任务名，Notion 风格）
                 painter.setPen(QColor("#e0e0e8"))
-                painter.setFont(QFont("Segoe UI", 10, font_weight))
+                painter.setFont(QFont(UI_FONT_FAMILY, 10, font_weight))
                 text = title[:int(bw / 7.5)] + ".." if len(title) > int(bw / 7.5) else title
                 painter.drawText(QRectF(bx + 8, by, bw - 14, bh),
                                  Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
@@ -304,11 +306,11 @@ class NotionGrid(QWidget):
                 if total_cnt > 0 and bw > 80:
                     if all_done:
                         painter.setPen(QColor("#4caf50"))
-                        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                        painter.setFont(QFont(UI_FONT_FAMILY, 10, QFont.Weight.Bold))
                         mark = "✓"
                     else:
                         painter.setPen(QColor("#a0a0b8"))
-                        painter.setFont(QFont("Segoe UI", 9))
+                        painter.setFont(QFont(UI_FONT_FAMILY, 9))
                         mark = f"{done_cnt}/{total_cnt}"
                     painter.drawText(QRectF(bx + bw - 40, by, 36, bh),
                                      Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, mark)

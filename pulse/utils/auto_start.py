@@ -1,6 +1,7 @@
 """开机自启管理 —— Windows 注册表 / Linux XDG Autostart."""
 
 import logging
+import plistlib
 import os
 import shlex
 import sys
@@ -100,6 +101,8 @@ def _set_linux_auto_start(enabled: bool) -> bool:
 
 def set_auto_start(enabled: bool) -> bool:
     """设置开机自启."""
+    if sys.platform == "darwin":
+        return _set_macos_auto_start(enabled)
     if sys.platform.startswith("linux"):
         return _set_linux_auto_start(enabled)
     if sys.platform != "win32":
@@ -127,6 +130,8 @@ def set_auto_start(enabled: bool) -> bool:
 
 def is_auto_start_enabled() -> bool:
     """检查开机自启是否已启用."""
+    if sys.platform == "darwin":
+        return _macos_launch_agent().exists()
     if sys.platform.startswith("linux"):
         return _linux_desktop_file().exists()
     if sys.platform != "win32":
@@ -142,4 +147,40 @@ def is_auto_start_enabled() -> bool:
             winreg.CloseKey(key)
             return False
     except Exception:
+        return False
+
+
+def _macos_launch_agent() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / "com.libertascat.pulse.plist"
+
+
+def _set_macos_auto_start(enabled: bool) -> bool:
+    """管理用户登录启动项，下次登录生效，不立即启动第二个实例."""
+    path = _macos_launch_agent()
+    try:
+        if enabled:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            command = _get_pulse_command()
+            # 让 Launch Services 启动应用包，保持权限归属于 Pulse.app。
+            if getattr(sys, "frozen", False):
+                bundle = next(
+                    (p for p in Path(sys.executable).parents if p.suffix == ".app"), None
+                )
+                if bundle is not None:
+                    command = ["/usr/bin/open", str(bundle)]
+            payload = {
+                "Label": "com.libertascat.pulse",
+                "ProgramArguments": command,
+                "RunAtLoad": True,
+                "LimitLoadToSessionType": "Aqua",
+                "WorkingDirectory": str(Path(__file__).resolve().parents[2]),
+            }
+            temp = path.with_suffix(".plist.tmp")
+            temp.write_bytes(plistlib.dumps(payload))
+            temp.replace(path)
+        else:
+            path.unlink(missing_ok=True)
+        return True
+    except OSError as exc:
+        logger.warning("设置 macOS 登录自启动失败: %s", exc)
         return False

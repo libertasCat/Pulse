@@ -1,7 +1,10 @@
 """系统常量定义."""
 
 import os
+import sys
 from pathlib import Path
+
+UI_FONT_FAMILY = "Helvetica Neue" if sys.platform == "darwin" else "Segoe UI"
 
 # 数据存储路径；默认保持原有 ~/.pulse，可用 PULSE_DATA_DIR 覆盖以便测试/便携部署
 _DEFAULT_DATA_DIR = Path(os.path.expanduser("~")) / ".pulse"
@@ -21,6 +24,8 @@ KNOWN_BROWSERS = {
     "chromium-browser", "msedge", "microsoft-edge", "firefox",
     "brave", "brave-browser", "opera", "opera-stable", "vivaldi",
     "tor", "iexplore", "epiphany", "librewolf",
+    "safari", "google chrome", "microsoft edge", "brave browser",
+    "arc", "orion",
     # 保留旧版 Windows 名称，兼容外部调用方直接查询此常量。
     "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe",
     "opera.exe", "vivaldi.exe", "tor.exe", "iexplore.exe",

@@ -80,11 +80,19 @@ class EmailConfig:
 
 
 @dataclass
+class SyncConfig:
+    account: str = ""
+    automatic: bool = False
+    interval_minutes: int = 5
+
+
+@dataclass
 class AppConfig:
     """应用全局配置."""
     tracker: TrackerConfig = field(default_factory=TrackerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     email: EmailConfig = field(default_factory=EmailConfig)
+    sync: SyncConfig = field(default_factory=SyncConfig)
     excluded_processes: list = field(default_factory=list)
     auto_start: bool = False
     minimize_to_tray: bool = True
@@ -134,6 +142,7 @@ class ConfigManager:
             tracker=TrackerConfig(**data.get("tracker", {})),
             llm=LLMConfig(**{k: v for k, v in data.get("llm", {}).items() if k in LLMConfig.__dataclass_fields__}),
             email=EmailConfig(**{k: v for k, v in data.get("email", {}).items() if k in EmailConfig.__dataclass_fields__}),
+            sync=SyncConfig(**{k: v for k, v in data.get("sync", {}).items() if k in SyncConfig.__dataclass_fields__}),
             excluded_processes=data.get("excluded_processes", []),
             auto_start=data.get("auto_start", False),
             minimize_to_tray=data.get("minimize_to_tray", True),
@@ -147,6 +156,7 @@ class ConfigManager:
             "tracker": asdict(config.tracker),
             "llm": asdict(config.llm),
             "email": asdict(config.email),
+            "sync": asdict(config.sync),
             "excluded_processes": config.excluded_processes,
             "auto_start": config.auto_start,
             "minimize_to_tray": config.minimize_to_tray,

@@ -117,6 +117,16 @@ def run_tracker() -> None:
 def run_gui() -> None:
     """GUI 模式 —— 启动 PyQt6 桌面界面."""
     from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
+    from PyQt6.QtCore import QEvent
+
+    class PulseApplication(QApplication):
+        main_window = None
+
+        def event(self, event):
+            # macOS 点击 Dock 图标时重新打开已隐藏的主窗口。
+            if event.type() == QEvent.Type.ApplicationActivate and self.main_window is not None:
+                self.main_window.show_from_tray()
+            return super().event(event)
 
     setup_logging()
     _print_banner()
@@ -127,7 +137,7 @@ def run_gui() -> None:
         sys.exit(1)
 
     # 创建 QApplication
-    app = QApplication(sys.argv)
+    app = PulseApplication(sys.argv)
     app.setApplicationName("Pulse")
     # 有托盘时保留原行为；部分 Linux 桌面（尤其未安装 AppIndicator 的 GNOME）
     # 不提供托盘，此时关闭主窗口应真正退出，避免程序无界面地留在后台。
@@ -176,6 +186,7 @@ def run_gui() -> None:
         repo=_repo,
         config_mgr=_config_mgr,
     )
+    app.main_window = window
 
     # 托盘（Windows 行为保持不变；Linux 无托盘环境安全降级）
     tray = None

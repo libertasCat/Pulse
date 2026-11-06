@@ -1,5 +1,7 @@
 """应用图标缓存 —— 从 exe 提取图标，供柱状图使用."""
 
+from pulse.utils.constants import UI_FONT_FAMILY
+
 import logging
 import os
 from collections import OrderedDict
@@ -37,7 +39,7 @@ def _make_fallback() -> QIcon:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(0, 0, 32, 32, 6, 6)
         painter.setPen(QColor("#ffffff"))
-        painter.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        painter.setFont(QFont(UI_FONT_FAMILY, 14, QFont.Weight.Bold))
         painter.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "A")
         painter.end()
         _FALLBACK_ICON = QIcon(pm)
@@ -47,6 +49,11 @@ def _make_fallback() -> QIcon:
 def _extract_exe_icon(exe_path: str) -> Optional[QPixmap]:
     """从 exe 提取图标（惰性 QFileIconProvider，避免模块级创建 + QApplication 前崩溃）."""
     try:
+        # macOS 可执行文件位于 Foo.app/Contents/MacOS 下；从应用包取原生图标。
+        for parent in Path(exe_path).parents:
+            if parent.suffix.lower() == ".app":
+                exe_path = str(parent)
+                break
         from PyQt6.QtCore import QFileInfo
         from PyQt6.QtWidgets import QFileIconProvider
         provider = QFileIconProvider()
@@ -148,7 +155,7 @@ def get_pulse_icon() -> QIcon:
 
         # P 字母
         painter.setPen(QColor("#ffffff"))
-        font = QFont("Segoe UI", 32, QFont.Weight.Bold)
+        font = QFont(UI_FONT_FAMILY, 32, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(pm.rect().adjusted(0, -2, 0, 0),
                          Qt.AlignmentFlag.AlignCenter, "P")

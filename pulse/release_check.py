@@ -10,7 +10,16 @@ def run():
     try:
         import ssl
         import psutil
-        import win32api
+        from pulse.services.mail_sync import cipher, encode_snapshot, decode_snapshot
+        encryption = cipher("self-test@163.com", "self-test-password")
+        sample = {"schema": 1, "device": "self-test", "records": {}, "blobs": {}}
+        assert decode_snapshot(encode_snapshot(sample, encryption), encryption) == sample
+        if sys.platform == "win32":
+            import win32api
+        elif sys.platform == "darwin":
+            import AppKit
+            import Quartz
+            import ApplicationServices
         from openai import OpenAI
         from sqlalchemy import create_engine, text
         from PyQt6.QtCore import QTimer
@@ -63,7 +72,7 @@ def run():
             assert not list(repo._attachment_root.glob('*.png'))
             repo._engine.dispose()
         result = {'ok': True, 'version': __version__, 'ssl': ssl.OPENSSL_VERSION,
-                  'qt_platform': app.platformName(), 'task_images': 'passed'}
+                  'qt_platform': app.platformName(), 'task_images': 'passed', 'mail_sync_crypto': 'passed'}
     except BaseException:
         result['error'] = traceback.format_exc()
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')

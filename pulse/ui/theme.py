@@ -28,7 +28,7 @@ QMainWindow, QWidget#centralWidget {
 QWidget {
     background-color: transparent;
     color: #ffffff;
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-family: "Helvetica Neue", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
     font-size: 13px;
 }
 
@@ -284,7 +284,7 @@ QMainWindow, QWidget#centralWidget {
 QWidget {
     background-color: transparent;
     color: #1a1a2e;
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-family: "Helvetica Neue", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
     font-size: 13px;
 }
 
@@ -580,6 +580,12 @@ class ThemeManager:
     def _is_system_dark() -> bool:
         """检测当前桌面系统的暗色模式偏好."""
         system = platform.system()
+        if system == "Darwin":
+            try:
+                from AppKit import NSUserDefaults
+                return NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle") == "Dark"
+            except ImportError:
+                return False
         if system == "Linux":
             try:
                 result = subprocess.run(

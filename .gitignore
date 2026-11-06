@@ -1,4 +1,7 @@
 # Python
+authroize.txt
+authorize.txt
+sync-secrets.json
 __pycache__/
 *.py[cod]
 *.egg-info/

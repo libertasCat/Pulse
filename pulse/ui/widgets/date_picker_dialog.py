@@ -1,5 +1,7 @@
 """自定义日期选择对话框 —— 纯 QPainter 月历（不依赖 QCalendarWidget）."""
 
+from pulse.utils.constants import UI_FONT_FAMILY
+
 import calendar
 from datetime import date
 from typing import Callable, Optional
@@ -49,7 +51,7 @@ class _MonthGrid(QWidget):
         painter.fillRect(0, 0, self.width(), self.height(), QColor("#25253a"))
 
         # 星期头
-        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        painter.setFont(QFont(UI_FONT_FAMILY, 10, QFont.Weight.Bold))
         for col, name in enumerate(["一", "二", "三", "四", "五", "六", "日"]):
             painter.setPen(QColor("#f44336" if col >= 5 else "#808098"))
             painter.drawText(QRectF(col * self._cw, 0, self._cw, 26),
@@ -91,7 +93,7 @@ class _MonthGrid(QWidget):
                     painter.setPen(QColor("#9b7cff"))
                 else:
                     painter.setPen(QColor("#e0e0e8"))
-                painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold if is_today else QFont.Weight.Medium))
+                painter.setFont(QFont(UI_FONT_FAMILY, 10, QFont.Weight.Bold if is_today else QFont.Weight.Medium))
                 painter.drawText(QRectF(x, y, self._cw, self._ch), Qt.AlignmentFlag.AlignCenter, str(day_num))
 
         painter.end()

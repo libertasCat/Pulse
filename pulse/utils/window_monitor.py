@@ -47,6 +47,8 @@ def get_active_window() -> WindowInfo:
         return _get_windows_active_window()
     if system == "Linux":
         return _get_linux_active_window()
+    if system == "Darwin":
+        return _get_macos_active_window()
 
     _warn_backend_unavailable(f"暂不支持 {system} 的活动窗口采集")
     return WindowInfo(available=False)
@@ -64,6 +66,8 @@ def get_idle_seconds() -> int:
         return _get_windows_idle_seconds()
     if system == "Linux":
         return _get_linux_idle_seconds()
+    if system == "Darwin":
+        return _get_macos_idle_seconds()
 
     _warn_backend_unavailable(f"暂不支持 {system} 的空闲检测", idle=True)
     return 0
@@ -119,6 +123,61 @@ def _warn_backend_unavailable(message: str, idle: bool = False) -> None:
             _IDLE_BACKEND_WARNING_SHOWN = True
         else:
             _ACTIVE_BACKEND_WARNING_SHOWN = True
+
+
+def _get_macos_active_window() -> WindowInfo:
+    """NSWorkspace 取得前台应用；辅助功能授权后读取聚焦窗口标题."""
+    try:
+        import objc
+        from AppKit import NSWorkspace
+        from ApplicationServices import (
+            AXIsProcessTrusted, AXUIElementCreateApplication,
+            AXUIElementCopyAttributeValue, AXUIElementSetMessagingTimeout,
+        )
+
+        # 追踪器在线程中轮询，显式释放 Cocoa 临时对象。
+        with objc.autorelease_pool():
+            app = NSWorkspace.sharedWorkspace().frontmostApplication()
+            if app is None:
+                return WindowInfo(available=False)
+            pid = int(app.processIdentifier())
+            info = _process_window_info(pid, "")
+            if info.process_name == "unknown":
+                info.process_name = str(app.localizedName() or "unknown")
+            if not AXIsProcessTrusted():
+                _warn_backend_unavailable(
+                    "macOS 未授权辅助功能：系统设置 → 隐私与安全性 → 辅助功能；"
+                    "当前仅记录应用用时，窗口标题为空", idle=True
+                )
+                return info
+            element = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(element, 0.2)
+            error, window = AXUIElementCopyAttributeValue(element, "AXFocusedWindow", None)
+            if error == 0 and window is not None:
+                error, title = AXUIElementCopyAttributeValue(window, "AXTitle", None)
+                if error == 0 and title is not None:
+                    info.window_title = str(title)
+            return info
+    except Exception as exc:
+        _warn_backend_unavailable(f"macOS 窗口采集不可用，请检查 PyObjC 依赖: {exc}")
+        return WindowInfo(available=False)
+
+
+def _get_macos_idle_seconds() -> int:
+    """CoreGraphics 提供自上次全局输入以来的秒数."""
+    try:
+        import math
+        from Quartz import (
+            CGEventSourceSecondsSinceLastEventType,
+            kCGEventSourceStateCombinedSessionState, kCGAnyInputEventType,
+        )
+        seconds = CGEventSourceSecondsSinceLastEventType(
+            kCGEventSourceStateCombinedSessionState, kCGAnyInputEventType
+        )
+        return max(0, int(seconds)) if math.isfinite(seconds) else 0
+    except Exception as exc:
+        _warn_backend_unavailable(f"macOS 空闲检测不可用: {exc}", idle=True)
+        return 0
 
 
 # ── Windows ─────────────────────────────────────────────────

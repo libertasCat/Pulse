@@ -1,5 +1,7 @@
 """可复用的图表控件 —— QPainter 绘制，无外部依赖."""
 
+from pulse.utils.constants import UI_FONT_FAMILY
+
 import calendar
 from datetime import date
 from typing import Optional
@@ -51,7 +53,7 @@ class HorizontalBarChart(QWidget):
 
             # ── label ──
             painter.setPen(QColor("#c0c0d0"))
-            font = QFont("Segoe UI", 11)
+            font = QFont(UI_FONT_FAMILY, 11)
             painter.setFont(font)
             elided = label[:20] + ".." if len(label) > 20 else label
             label_x = margin + icon_size + icon_margin + 2
@@ -129,7 +131,7 @@ class PieChart(QWidget):
         # ── 图例 ──
         legend_x = side + 20
         legend_y = 20
-        painter.setFont(QFont("Segoe UI", 10))
+        painter.setFont(QFont(UI_FONT_FAMILY, 10))
         for label, value, color_hex in self._data:
             pct = value / self._total * 100
             # color dot
@@ -199,7 +201,7 @@ class HourlyTimeline(QWidget):
             # 小时标签（每 3 小时）
             if hour % 3 == 0:
                 painter.setPen(QColor("#808098"))
-                painter.setFont(QFont("Segoe UI", 8))
+                painter.setFont(QFont(UI_FONT_FAMILY, 8))
                 painter.drawText(QRectF(x - 8, margin_top + chart_h + 4, 28, 20),
                                  Qt.AlignmentFlag.AlignCenter, f"{hour:02d}")
 
@@ -252,14 +254,14 @@ class HeatmapCalendar(QWidget):
 
         # ── 标题 ──
         painter.setPen(QColor("#ffffff"))
-        painter.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        painter.setFont(QFont(UI_FONT_FAMILY, 13, QFont.Weight.Bold))
         month_name = ["", "一月", "二月", "三月", "四月", "五月", "六月",
                        "七月", "八月", "九月", "十月", "十一月", "十二月"]
         painter.drawText(QRectF(margin_x, 0, 200, 30),
                          Qt.AlignmentFlag.AlignLeft, f"{self._year} {month_name[self._month]}")
 
         # ── 星期标题 ──
-        painter.setFont(QFont("Segoe UI", 8))
+        painter.setFont(QFont(UI_FONT_FAMILY, 8))
         painter.setPen(QColor("#808098"))
         days = ["一", "二", "三", "四", "五", "六", "日"]
         for i, d in enumerate(days):
@@ -293,13 +295,13 @@ class HeatmapCalendar(QWidget):
                 painter.setPen(QColor("#ffffff"))
             else:
                 painter.setPen(QColor("#606080"))
-            painter.setFont(QFont("Segoe UI", 8))
+            painter.setFont(QFont(UI_FONT_FAMILY, 8))
             painter.drawText(QRectF(x, y, cell_size, cell_size),
                              Qt.AlignmentFlag.AlignCenter, str(day_num))
 
         # ── 图例 ──
         legend_y = margin_y + ((last_day + first_weekday) // 7 + 1) * (cell_size + gap) + 12
-        painter.setFont(QFont("Segoe UI", 8))
+        painter.setFont(QFont(UI_FONT_FAMILY, 8))
         painter.setPen(QColor("#808098"))
         painter.drawText(QRectF(margin_x, legend_y, 60, 16),
                          Qt.AlignmentFlag.AlignLeft, "少")

@@ -3,7 +3,7 @@
 > 自动追踪你的电脑使用时间，AI 帮你分类、分析、给建议，日历帮你规划每一天。
 
 ![Version](https://img.shields.io/badge/version-0.3.11-purple)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux%20%7C%20macOS-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -14,7 +14,7 @@
 - **后台静默记录**：自动追踪每个窗口的使用时长，无需手动操作
 - **智能空闲检测**：5 分钟无操作自动暂停计时
 - **浏览器识别**：自动提取浏览器页面标题
-- **应用图标**：自动提取 Windows/Linux 可执行文件图标，一目了然
+- **应用图标**：自动提取 Windows/Linux 可执行文件及 macOS 应用图标，一目了然
 
 ### 🤖 AI 智能分类
 - **多服务商支持**：DeepSeek / Kimi (Moonshot) / OpenAI / 本地 Ollama / 自定义
@@ -177,7 +177,7 @@ A: 删除程序目录 + `~/.pulse/` 文件夹即可完全移除；Linux 如启�
 A: Linux X11 可完整获取活动窗口和空闲状态，需要 `x11-utils` 和 `xprintidle`；GNOME Wayland 可启动并检测空闲状态，但由于 Wayland 隐私限制，普通应用无法读取全局活动窗口，Pulse 会安全跳过窗口记录。需要完整追踪时请选择 Xorg 会话。
 
 **Q: 能用于 macOS 吗？**
-A: 目前支持 Windows 10/11 和常见 Linux 桌面，macOS 支持仍在规划中。
+A: 目前支持 Windows 10/11 和常见 Linux 桌面，以及 macOS（Intel / Apple Silicon，需在对应架构上构建）。
 
 ---
 
@@ -198,3 +198,39 @@ A: 目前支持 Windows 10/11 和常见 Linux 桌面，macOS 支持仍在规划�
 ---
 
 *Pulse — 让你的每一分钟都有迹可循*
+
+
+
+### macOS 源码运行与打包
+
+建议使用 Python 3.11 或更新版本。Intel 和 Apple Silicon 均使用本机架构的 Python。
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python main.py
+```
+
+- 前台应用用时通过 NSWorkspace 采集，空闲状态通过 CoreGraphics 检测。
+- 如需记录窗口/浏览器页面标题，请在「系统设置 → 隐私与安全性 → 辅助功能」授权 Pulse.app；源码运行时授权启动它的终端或 Python。授权后无需重启追踪器；不授权时仍记录应用用时，标题为空。不需要屏幕录制或自动化权限。
+- 设置中的「登录时自动启动」写入 `~/Library/LaunchAgents/com.libertascat.pulse.plist`，下次登录生效；移动源码、虚拟环境或应用包后应重新开关该选项。
+- 点击关闭按钮后程序可留在菜单栏，通过菜单栏或 Dock 图标重新打开；从菜单栏选择退出。系统主题在启动或重新应用主题时读取。
+- 数据继续存储在 `~/.pulse/`，兼容现有配置；可以用 `PULSE_DATA_DIR` 指定其他目录。
+
+构建 Mac 应用（必须在 macOS 本机执行）：
+
+```bash
+python -m pip install -r requirements-macos-release.txt
+python -m PyInstaller --clean --noconfirm Pulse-macOS.spec
+open dist/Pulse.app
+# 隔离自检，不启动追踪器或访问真实用户数据
+PULSE_DATA_DIR=/tmp/pulse-self-test dist/Pulse.app/Contents/MacOS/Pulse --self-test /tmp/pulse-self-test.json
+```
+
+产物为 `dist/Pulse.app`。默认按当前 Python 的架构构建，并非 Universal 应用。分发到其他电脑前需自行签名和公证；当前配置用于本机构建。卸载前关闭登录自启动，或删除上述 LaunchAgent 文件。
+
+
+### 网易邮箱多设备同步
+
+支持手动双向合并、从邮箱同步、用本机覆盖邮箱及定时自动同步。设置方法、冲突处理及容量限制见[邮箱同步说明](docs/mail-sync.md)。

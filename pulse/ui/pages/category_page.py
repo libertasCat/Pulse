@@ -562,7 +562,7 @@ class CategoryPage(QWidget):
         file_filter = (
             "Windows 可执行文件 (*.exe);;所有文件 (*)"
             if sys.platform == "win32"
-            else "Linux 可执行文件 (*);;所有文件 (*)"
+            else "可执行文件 (*);;所有文件 (*)"
         )
         path, _ = QFileDialog.getOpenFileName(self, "选择应用", start_dir, file_filter)
         if not path:

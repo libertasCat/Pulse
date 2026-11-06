@@ -43,6 +43,10 @@ class SettingsPage(QWidget):
         self._build_tracker_section()
         self._build_llm_section()
         self._build_email_section()
+        self._add_section("多设备邮箱同步")
+        from pulse.ui.sync_controls import SyncControls
+        self._sync_controls = SyncControls(config_mgr, repo, self)
+        self._layout.addWidget(self._sync_controls)
         self._build_auto_start_section()
         self._build_cleanup_section()
         self._build_about_section()
@@ -53,6 +57,7 @@ class SettingsPage(QWidget):
 
     def set_repo(self, repo: Repository) -> None:
         self._repo = repo
+        self._sync_controls.repo = repo
 
     # ── 构建 ────────────────────────────────────────────
 
@@ -260,7 +265,7 @@ class SettingsPage(QWidget):
 
     def _build_auto_start_section(self):
         self._add_section("开机自启")
-        label = "登录时自动启动 Pulse" if sys.platform.startswith("linux") else "开机时自动启动 Pulse"
+        label = "登录时自动启动 Pulse" if sys.platform != "win32" else "开机时自动启动 Pulse"
         self._auto_start_cb = QCheckBox(label)
         self._auto_start_cb.setChecked(is_auto_start_enabled())
         self._auto_start_cb.toggled.connect(self._on_auto_start_toggled)
