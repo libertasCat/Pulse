@@ -1,6 +1,7 @@
 """Notion 风格月历网格 —— 纯 QPainter，可变行高，任务堆叠."""
 
 from pulse.utils.constants import UI_FONT_FAMILY
+from pulse.ui.calendar_style import calendar_colors
 
 import calendar
 from datetime import date
@@ -96,7 +97,8 @@ class NotionGrid(QWidget):
                 max_stack_per_row[calendar_row] = max(
                     max_stack_per_row.get(calendar_row, 0), sr + 1
                 )
-        return [max(60, 34 + max_stack_per_row.get(r, 0) * 22 + 4) for r in range(6)]
+        weeks = (self._first_wd + self._last_day + 6) // 7
+        return [max(96, 34 + max_stack_per_row.get(r, 0) * 28 + 12) for r in range(weeks)]
 
     def _layout(self):
         _, self._last_day = calendar.monthrange(self._year, self._month)
@@ -130,9 +132,11 @@ class NotionGrid(QWidget):
             if yy < h:
                 return i
             yy -= h
-        return 5
+        return -1
 
     def _day_at(self, x: float, y: float) -> int:
+        if x < 0 or x >= self.width() or y >= self.height():
+            return 0
         if y < self._header_h:
             return 0
         col = int(x / self._cell_w)
@@ -149,6 +153,9 @@ class NotionGrid(QWidget):
         因冲突被分到高槽位后，会在整个月一直占用同一槽位，看起来像任务条
         错行，甚至在月底空白区域继续绘制。
         """
+        key = (self._year, self._month, tuple(self._tasks))
+        if getattr(self, '_stack_key', None) == key:
+            return self._stack_cache
         rows: dict[tuple[int, int], int] = {}
         ordered = sorted(self._tasks, key=lambda t: (t[1], t[2], t[0]))
         for calendar_row in range(6):
@@ -166,17 +173,16 @@ class NotionGrid(QWidget):
                     continue
 
                 assigned = 0
-                while assigned < 20 and any(
+                while any(
                     assigned in occupied.get(day, set())
                     for day in range(seg_start, seg_end + 1)
                 ):
                     assigned += 1
-                if assigned >= 20:
-                    assigned = 0
 
                 rows[(tid, calendar_row)] = assigned
                 for day in range(seg_start, seg_end + 1):
                     occupied.setdefault(day, set()).add(assigned)
+        self._stack_key, self._stack_cache = key, rows
         return rows
 
     # ── 绘制 ────────────────────────────────────────────
@@ -186,30 +192,38 @@ class NotionGrid(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, cw = self.width(), self._cell_w
+        colors = calendar_colors()
 
         # 背景
-        painter.fillRect(0, 0, w, self.height(), QColor("#1a1a2e"))
+        painter.fillRect(0, 0, w, self.height(), QColor(colors['background']))
 
         # 星期头
-        painter.setFont(QFont(UI_FONT_FAMILY, 10, QFont.Weight.Bold))
+        painter.setFont(QFont(UI_FONT_FAMILY, 10))
         for col, name in enumerate(["一", "二", "三", "四", "五", "六", "日"]):
-            painter.setPen(QColor("#f44336" if col >= 5 else "#808098"))
-            painter.drawText(QRectF(col * cw, 0, cw, self._header_h), Qt.AlignmentFlag.AlignCenter, name)
+            painter.setPen(QColor(colors['muted']))
+            painter.drawText(QRectF(col * cw + 10, 0, cw - 20, self._header_h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, '周' + name)
 
-        painter.setPen(QPen(QColor("#2a2a40"), 1))
+        painter.setPen(QPen(QColor(colors['line']), 1))
         painter.drawLine(0, self._header_h, w, self._header_h)
 
         # ── 格子 + 日期 + 加号 ──
-        for r in range(6):
+        for r in range(len(self._row_heights)):
             row_h = self._row_heights[r]
             for c in range(7):
                 day_num = r * 7 + c + 1 - self._first_wd
                 x, y = c * cw, self._row_y(r)
                 in_month = 1 <= day_num <= self._last_day
 
-                painter.setPen(QPen(QColor("#2a2a40"), 1))
+                if not in_month:
+                    painter.fillRect(QRectF(x, y, cw, row_h), QColor(colors['outside']))
+                painter.setPen(QPen(QColor(colors['line']), 1))
                 painter.drawRect(QRectF(x, y, cw, row_h))
                 if not in_month:
+                    from datetime import timedelta
+                    adjacent = date(self._year, self._month, 1) + timedelta(days=day_num - 1)
+                    painter.setPen(QColor(colors['muted']))
+                    painter.setFont(QFont(UI_FONT_FAMILY, 10))
+                    painter.drawText(QRectF(x + cw - 32, y + 4, 28, 28), Qt.AlignmentFlag.AlignCenter, str(adjacent.day))
                     continue
 
                 is_today = (self._year == self._today.year and
@@ -220,11 +234,11 @@ class NotionGrid(QWidget):
                     day_rect = QRectF(x + cw - 32, y + 4, 28, 28)
                     path = QPainterPath()
                     path.addEllipse(day_rect)
-                    painter.fillPath(path, QColor("#7c5cfc"))
+                    painter.fillPath(path, QColor(colors['today']))
                     painter.setPen(QColor("#ffffff"))
                 else:
-                    painter.setPen(QColor("#ffffff"))
-                painter.setFont(QFont(UI_FONT_FAMILY, 12, QFont.Weight.Bold if is_today else QFont.Weight.Medium))
+                    painter.setPen(QColor(colors['text']))
+                painter.setFont(QFont(UI_FONT_FAMILY, 10, QFont.Weight.Bold if is_today else QFont.Weight.Normal))
                 painter.drawText(day_rect if is_today else QRectF(x + cw - 32, y + 4, 28, 28),
                                  Qt.AlignmentFlag.AlignCenter, str(day_num))
 
@@ -240,9 +254,9 @@ class NotionGrid(QWidget):
                 plus_rect = QRectF(x + 4, y + 7, 20, 18)
                 path2 = QPainterPath()
                 path2.addRoundedRect(plus_rect, 4, 4)
-                painter.fillPath(path2, QColor(bg_r, bg_g, bg_b))
+                painter.fillPath(path2, QColor(colors['hover'] if is_hover_btn else colors['background']))
                 # + 号用两条线段绘制，中心对齐
-                painter.setPen(QPen(QColor(fg_r, fg_g, fg_b), 2))
+                painter.setPen(QPen(QColor(colors['text'] if is_hover_btn else colors['muted']), 1))
                 cx_p = plus_rect.center().x()
                 cy_p = plus_rect.center().y()
                 painter.drawLine(QPointF(cx_p - 3.5, cy_p), QPointF(cx_p + 3.5, cy_p))
@@ -257,13 +271,13 @@ class NotionGrid(QWidget):
                 continue
 
             is_hover = (tid == self._hover_task_id)
-            pen_color = "#7c5cfc" if is_hover else "#3a3a50"
-            font_weight = QFont.Weight.Bold if is_hover else QFont.Weight.Normal
+            pen_color = colors['muted'] if is_hover else colors['line']
+            font_weight = QFont.Weight.Normal
 
             # 清单进度 → 全部完成时任务条左侧竖条变绿、右侧显示 ✓
             done_cnt, total_cnt = self._checklist_summaries.get(tid, (0, 0))
             all_done = total_cnt > 0 and done_cnt >= total_cnt
-            accent_color = "#4caf50" if all_done else "#7c5cfc"
+            accent_color = "#448361" if all_done else colors['muted']
 
             # 拆分为每行的段：[(row, seg_start_day, seg_end_day)]
             segments = []
@@ -282,24 +296,26 @@ class NotionGrid(QWidget):
                 s_col = (seg_start + self._first_wd - 1) % 7
                 e_col = (seg_end + self._first_wd - 1) % 7
                 bx = s_col * cw + 2
-                by = self._row_y(seg_row) + 34 + stack_row * 22
+                by = self._row_y(seg_row) + 34 + stack_row * 28
                 bw = (e_col - s_col + 1) * cw - 4
-                bh = 19
+                bh = 24
 
                 painter.setPen(QPen(QColor(pen_color), 1))
-                painter.setBrush(QColor("#25253a"))
+                painter.setBrush(QColor(colors['hover'] if is_hover else colors['card']))
                 path = QPainterPath()
                 path.addRoundedRect(bx, by, bw, bh, 3, 3)
                 painter.drawPath(path)
 
                 painter.setPen(Qt.PenStyle.NoPen)
-                painter.fillRect(QRectF(bx + 1, by + 2, 3, bh - 4), QColor(accent_color))
+                if all_done:
+                    painter.fillRect(QRectF(bx + 1, by + 2, 2, bh - 4), QColor(accent_color))
 
                 # 标题每段都画（跨行时每行第一格显示任务名，Notion 风格）
-                painter.setPen(QColor("#e0e0e8"))
+                painter.setPen(QColor(colors['text']))
                 painter.setFont(QFont(UI_FONT_FAMILY, 10, font_weight))
-                text = title[:int(bw / 7.5)] + ".." if len(title) > int(bw / 7.5) else title
-                painter.drawText(QRectF(bx + 8, by, bw - 14, bh),
+                title_width = max(0, bw - 16 - (40 if total_cnt > 0 and bw > 80 else 0))
+                text = painter.fontMetrics().elidedText(title, Qt.TextElideMode.ElideRight, int(title_width))
+                painter.drawText(QRectF(bx + 8, by, title_width, bh),
                                  Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
 
                 # 清单进度标记（右对齐）：未完成显示 n/m，全部完成显示绿色 ✓
@@ -309,7 +325,7 @@ class NotionGrid(QWidget):
                         painter.setFont(QFont(UI_FONT_FAMILY, 10, QFont.Weight.Bold))
                         mark = "✓"
                     else:
-                        painter.setPen(QColor("#a0a0b8"))
+                        painter.setPen(QColor(colors['muted']))
                         painter.setFont(QFont(UI_FONT_FAMILY, 9))
                         mark = f"{done_cnt}/{total_cnt}"
                     painter.drawText(QRectF(bx + bw - 40, by, 36, bh),
@@ -364,6 +380,7 @@ class NotionGrid(QWidget):
                             new_end = sd
                         self._tasks[i] = (tid, sd, new_end, title)
                         break
+                self.updateGeometry()
                 self.update()
             return
 
@@ -379,6 +396,7 @@ class NotionGrid(QWidget):
                             new_start = ed
                         self._tasks[i] = (tid, new_start, ed, title)
                         break
+                self.updateGeometry()
                 self.update()
             return
 
@@ -393,8 +411,8 @@ class NotionGrid(QWidget):
                     continue
                 calendar_row = (self._hover_day + self._first_wd - 1) // 7
                 sr = task_rows.get((tid, calendar_row), 0)
-                ty = cy + 34 + sr * 22
-                if ty <= y < ty + 20:
+                ty = cy + 34 + sr * 28
+                if ty <= y < ty + 24:
                     self._hover_task_id = tid
                     # 右边缘检测
                     _, e_day_c = self._clamp(sd, ed)
@@ -406,20 +424,26 @@ class NotionGrid(QWidget):
                     s_day_c, _ = self._clamp(sd, ed)
                     s_col = (s_day_c + self._first_wd - 1) % 7
                     bar_left = s_col * self._cell_w
-                    if left_draggable and abs(x - bar_left) < 12:
+                    start_row = (s_day + self._first_wd - 1) // 7
+                    end_row = (e_day + self._first_wd - 1) // 7
+                    self.setToolTip(title)
+                    if left_draggable and calendar_row == start_row and abs(x - bar_left) < 12:
                         self.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
-                    elif abs(x - bar_right) < 12:
+                    elif calendar_row == end_row and abs(x - bar_right) < 12:
                         self.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
                     else:
                         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                     break
             if not self._hover_task_id:
+                self.setToolTip('双击空白处新建任务')
                 self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
 
         if old_ht != self._hover_task_id:
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent):
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
         x, y = int(event.position().x()), int(event.position().y())
         day = self._day_at(x, y)
         if day <= 0:
@@ -445,20 +469,22 @@ class NotionGrid(QWidget):
                 continue
             calendar_row = (day + self._first_wd - 1) // 7
             sr = task_rows.get((tid, calendar_row), 0)
-            ty = cy + 34 + sr * 22
-            if ty <= y < ty + 20:
+            ty = cy + 34 + sr * 28
+            if ty <= y < ty + 24:
                 _, e_day_c = self._clamp(sd, ed)
                 e_col = (e_day_c + self._first_wd - 1) % 7
                 ecx = e_col * self._cell_w
                 bar_right = ecx + self._cell_w
 
                 # 右边缘 → 右拉
-                if abs(x - bar_right) < 12:
+                end_row = (e_day + self._first_wd - 1) // 7
+                start_row = (s_day + self._first_wd - 1) // 7
+                if calendar_row == end_row and abs(x - bar_right) < 12:
                     self._drag_side_task_id = tid
                     self._drag_target_day = e_day
                     return
                 # 左边缘 → 左拉（仅开始日期在当月内）
-                if self._task_left_draggable(sd):
+                if calendar_row == start_row and self._task_left_draggable(sd):
                     s_day_c, _ = self._clamp(sd, ed)
                     s_col = (s_day_c + self._first_wd - 1) % 7
                     bar_left = s_col * self._cell_w
@@ -509,8 +535,8 @@ class NotionGrid(QWidget):
                 continue
             calendar_row = (day + self._first_wd - 1) // 7
             sr = task_rows.get((tid, calendar_row), 0)
-            ty = cy + 34 + sr * 22
-            if ty <= y < ty + 20:
+            ty = cy + 34 + sr * 28
+            if ty <= y < ty + 24:
                 on_task = True
                 break
         if not on_task:

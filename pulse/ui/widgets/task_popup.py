@@ -68,6 +68,15 @@ class TaskCreatePopup(QFrame):
 
     def show_at(self, x: int, y: int, callback):
         """在指定全局坐标弹出，callback 接收标题字符串."""
+        from pulse.ui.calendar_style import calendar_colors
+        c = calendar_colors()
+        self.setStyleSheet(f"QFrame#taskPopup {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 6px; }}")
+        for label in self.findChildren(QLabel):
+            label.setStyleSheet(f"color: {c['text']}; font-size: 14px; font-weight: 600; background: transparent;")
+        self._title_input.setStyleSheet(f"QLineEdit {{ background: {c['background']}; color: {c['text']}; border: 1px solid {c['line']}; border-radius: 4px; padding: 8px; }} QLineEdit:focus {{ border-color: {c['muted']}; }}")
+        for button in (self._cancel_btn, self._create_btn):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(f"QPushButton {{ background: {c['hover']}; color: {c['text']}; border: 1px solid {c['line']}; border-radius: 4px; padding: 6px 16px; }} QPushButton:hover {{ border-color: {c['muted']}; }}")
         self._callback = callback
         self._title_input.clear()
         self.move(x, y)
@@ -85,6 +94,8 @@ class TaskCreatePopup(QFrame):
         title = self._title_input.text().strip()
         if not title:
             return
-        if self._callback:
-            self._callback(title)
+        callback = self._callback
+        self._callback = None
         self.close()
+        if callback:
+            callback(title)

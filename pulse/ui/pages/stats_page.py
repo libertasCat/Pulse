@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
@@ -22,6 +22,39 @@ _BAR_COLORS = [
 ]
 
 
+class _StatsSignals(QObject):
+    ready = pyqtSignal(int, int, object, object)
+
+
+class _StatsQuery(QRunnable):
+    def __init__(self, repo, request, tab, today, offsets):
+        super().__init__()
+        self.repo, self.request, self.tab, self.today, self.offsets = repo, request, tab, today, offsets
+        self.signals = _StatsSignals()
+
+    def run(self):
+        try:
+            repo, today, tab = self.repo, self.today, self.tab
+            if tab == 0:
+                target = today + timedelta(days=self.offsets[0])
+                apps = repo.get_usage_summary_by_date(target, 'process_name')
+                data = (repo.get_total_duration_by_date(target), repo.get_hourly_breakdown(target), apps)
+            elif tab == 1:
+                monday = today - timedelta(days=today.weekday()) + timedelta(weeks=self.offsets[1])
+                data = repo.get_daily_summaries(monday, 7)
+            elif tab == 2:
+                month_index = today.year * 12 + today.month - 1 + self.offsets[2]
+                year, month = divmod(month_index, 12)
+                data = repo.get_daily_totals_for_month(year, month + 1)
+            else:
+                monday = today - timedelta(days=today.weekday())
+                days = repo.get_daily_summaries(monday - timedelta(days=7), 14)
+                data = (days[7:], days[:7])
+            self.signals.ready.emit(self.request, tab, data, None)
+        except Exception as error:
+            self.signals.ready.emit(self.request, self.tab, None, str(error))
+
+
 class StatsPage(QWidget):
     """统计页面 —— 四标签：日 / 周 / 月 / 对比."""
 
@@ -29,6 +62,8 @@ class StatsPage(QWidget):
         super().__init__()
         self._repo = repo
         self._today = date.today()
+        self._request = 0
+        self._jobs = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -253,41 +288,62 @@ class StatsPage(QWidget):
         if not self._repo:
             return
         self._today = date.today()
-        self._update_day_view()
-        self._update_week_view()
-        self._update_month_view()
-        self._update_compare_view()
+        self._request += 1
+        if self._jobs:
+            self._subtitle.setText('正在加载…')
+            return  # Coalesce rapid navigation instead of queuing unbounded SQL jobs.
+        tab = max(0, self._tab_group.checkedId())
+        job = _StatsQuery(self._repo, self._request, tab, self._today,
+                          (self._day_offset, self._week_offset, self._month_offset))
+        job.signals.ready.connect(self._apply_result)
+        self._jobs[self._request] = job
+        self._subtitle.setText('正在加载…')
+        QThreadPool.globalInstance().start(job)
 
-    def _update_day_view(self):
+    def _apply_result(self, request, tab, data, error):
+        self._jobs.pop(request, None)
+        if request != self._request:
+            self._refresh()
+            return
+        if error:
+            import logging
+            logging.getLogger(__name__).warning('统计查询失败: %s', error)
+            self._subtitle.setText('加载失败，请重新进入统计页重试')
+            return
+        self._subtitle.setText('')
+        (self._update_day_view, self._update_week_view,
+         self._update_month_view, self._update_compare_view)[tab](data)
+
+    def _update_day_view(self, result=None):
+        if result is None:
+            self._refresh()
+            return
         target = self._today + timedelta(days=self._day_offset)
         self._day_label.setText(target.strftime("%Y-%m-%d  %a"))
-        total = self._repo.get_total_duration_by_date(target)
+        total, hourly, apps = result
         h, m = total // 3600, (total % 3600) // 60
         self._subtitle.setText(f"{target.isoformat()}  ·  总 {h}h {m:02d}m")
 
-        hourly = self._repo.get_hourly_breakdown(target)
         self._hourly_chart.set_data([h["total_seconds"] for h in hourly])
 
         # Top 应用
-        apps = self._repo.get_usage_summary_by_date(target, "process_name")
         data = []
         for i, app in enumerate(apps[:10]):
             raw_name = app["name"]
             disp_name = strip_ext(raw_name)
-            try:
-                exe_path = self._repo.get_latest_exe_path(raw_name)
-            except Exception:
-                exe_path = None
-            icon = get_app_icon(raw_name, exe_path)
+            icon = get_app_icon(raw_name, allow_extract=False)
             data.append((disp_name, app["total_seconds"], _BAR_COLORS[i % 8], icon))
         self._day_bar.set_data(data)
 
-    def _update_week_view(self):
+    def _update_week_view(self, result=None):
+        if result is None:
+            self._refresh()
+            return
         monday = self._today - timedelta(days=self._today.weekday())
         monday += timedelta(weeks=self._week_offset)
         self._week_label.setText(f"{monday.strftime('%m/%d')} - {(monday + timedelta(days=6)).strftime('%m/%d')}")
 
-        days = self._repo.get_daily_summaries(monday, 7)
+        days = result
         names = [(monday + timedelta(days=i)).strftime("%a %m/%d") for i in range(7)]
         data = []
         total = 0
@@ -298,7 +354,10 @@ class StatsPage(QWidget):
         h, m = total // 3600, (total % 3600) // 60
         self._week_total_label.setText(f"本周合计: {h}h {m:02d}m")
 
-    def _update_month_view(self):
+    def _update_month_view(self, result=None):
+        if result is None:
+            self._refresh()
+            return
         y = self._today.year
         m = self._today.month + self._month_offset
         while m < 1:
@@ -309,19 +368,21 @@ class StatsPage(QWidget):
             m -= 12
 
         self._month_label.setText(f"{y}年{m}月")
-        totals = self._repo.get_daily_totals_for_month(y, m)
+        totals = result
         self._heatmap.set_data(y, m, totals)
 
         total = sum(t["total_seconds"] for t in totals)
         h, m2 = total // 3600, (total % 3600) // 60
         self._month_total_label.setText(f"本月合计: {h}h {m2:02d}m")
 
-    def _update_compare_view(self):
+    def _update_compare_view(self, result=None):
+        if result is None:
+            self._refresh()
+            return
         monday = self._today - timedelta(days=self._today.weekday())
         last_monday = monday - timedelta(weeks=1)
 
-        this_week = self._repo.get_daily_summaries(monday, 7)
-        last_week = self._repo.get_daily_summaries(last_monday, 7)
+        this_week, last_week = result
 
         names = [(monday + timedelta(days=i)).strftime("%a") for i in range(7)]
         data = []

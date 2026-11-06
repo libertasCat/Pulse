@@ -87,7 +87,7 @@ class MacOSAutoStartTests(unittest.TestCase):
             ), patch.object(auto_start.sys, "executable", "/Applications/Pulse Test.app/Contents/MacOS/Pulse"):
                 self.assertTrue(auto_start._set_macos_auto_start(True))
                 args = plistlib.loads(path.read_bytes())["ProgramArguments"]
-                self.assertEqual(args, ["/usr/bin/open", "/Applications/Pulse Test.app"])
+                self.assertEqual(args, ["/usr/bin/open", str(Path("/Applications/Pulse Test.app"))])
 
 
 if __name__ == "__main__":

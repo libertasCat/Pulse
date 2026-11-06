@@ -22,14 +22,15 @@ class CalendarPage(QWidget):
 
     def __init__(self, repo: Optional[Repository] = None):
         super().__init__()
+        self.setObjectName('calendarPage')
         self._repo = repo
         self._today = date.today()
         self._view_year = self._today.year
         self._view_month = self._today.month
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(8)
+        root.setContentsMargins(28, 24, 28, 16)
+        root.setSpacing(16)
 
         # ── 导航 ──
         self._build_nav(root)
@@ -75,44 +76,51 @@ class CalendarPage(QWidget):
     # ── 导航 ──────────────────────────────────────────
 
     def _build_nav(self, layout: QVBoxLayout):
+        heading = QLabel('日历')
+        heading.setObjectName('calendarHeading')
+        layout.addWidget(heading)
         row = QHBoxLayout()
         row.setSpacing(6)
 
         today_btn = QPushButton("今天")
-        today_btn.setStyleSheet(
-            "QPushButton { background: #7c5cfc; border: none; border-radius: 4px; "
-            "padding: 6px 14px; color: #fff; font-weight: 600; font-size: 12px; }"
-            "QPushButton:hover { background: #6a4acc; }"
-        )
+        today_btn.setToolTip('回到本月')
         today_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         today_btn.clicked.connect(self._go_today)
 
         self._nav_label = QLabel()
-        self._nav_label.setStyleSheet("font-size: 18px; font-weight: 700;")
+        self._nav_label.setObjectName('calendarMonth')
 
-        prev_btn = QPushButton("◀")
+        prev_btn = QPushButton("‹")
         prev_btn.setFixedSize(32, 32)
-        prev_btn.setStyleSheet("QPushButton { border: none; border-radius: 4px; font-size: 14px; color: #a0a0b8; }"
-                               "QPushButton:hover { background: #2a2a44; }")
+        prev_btn.setToolTip('上个月')
         prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         prev_btn.clicked.connect(self._prev_month)
 
-        next_btn = QPushButton("▶")
+        next_btn = QPushButton("›")
         next_btn.setFixedSize(32, 32)
-        next_btn.setStyleSheet("QPushButton { border: none; border-radius: 4px; font-size: 14px; color: #a0a0b8; }"
-                               "QPushButton:hover { background: #2a2a44; }")
+        next_btn.setToolTip('下个月')
         next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         next_btn.clicked.connect(self._next_month)
 
-        row.addWidget(today_btn)
-        row.addSpacing(8)
-        row.addWidget(prev_btn)
         row.addWidget(self._nav_label)
-        row.addWidget(next_btn)
         row.addStretch()
+        row.addWidget(prev_btn)
+        row.addWidget(today_btn)
+        row.addWidget(next_btn)
+        new_btn = QPushButton('新建任务')
+        new_btn.setObjectName('calendarNew')
+        new_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        new_btn.clicked.connect(self._new_task)
+        row.addSpacing(12)
+        row.addWidget(new_btn)
         layout.addLayout(row)
 
     # ── 刷新 ───────────────────────────────────────────
+
+    def _new_task(self):
+        today = date.today()
+        day = today.day if (self._view_year, self._view_month) == (today.year, today.month) else 1
+        self._on_cell_add(self._view_year, self._view_month, day)
 
     def _refresh_grid(self):
         self._nav_label.setText(f"{_MONTH_NAMES[self._view_month]} {self._view_year}")
@@ -125,6 +133,7 @@ class CalendarPage(QWidget):
     # ── 导航 ───────────────────────────────────────────
 
     def _go_today(self):
+        self._today = date.today()
         self._view_year = self._today.year
         self._view_month = self._today.month
         self._refresh_grid()
@@ -151,9 +160,7 @@ class CalendarPage(QWidget):
         center = self.mapToGlobal(self.rect().center())
         gx = int(center.x() - 140)
         gy = int(center.y() - 70)
-        self._popup.move(gx, gy)
-        self._popup.show()
-        self._popup.set_callback(lambda title: self._do_create(year, month, day, title))
+        self._popup.show_at(gx, gy, lambda title: self._do_create(year, month, day, title))
 
     def _do_create(self, year: int, month: int, day: int, title: str):
         if not self._repo:

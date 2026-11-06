@@ -569,7 +569,41 @@ class ThemeManager:
 
     def _resolve_qss(self) -> str:
         mode = self._resolved_mode()
-        return DARK_QSS if mode == ThemeMode.DARK else LIGHT_QSS
+        dark = mode == ThemeMode.DARK
+        foreground, border, hover, muted = (
+            ("#e8e8ef", "#45455d", "#343449", "#89899e") if dark else
+            ("#37352f", "#dcdce4", "#ededf3", "#92929e")
+        )
+        # Scoped to mail sync: native controls elsewhere keep their own styling.
+        buttons = f"""
+        QWidget#syncControls QPushButton {{
+            color: {foreground}; background-color: transparent;
+            border: 1px solid {border}; border-radius: 5px; padding: 5px 10px;
+        }}
+        QWidget#syncControls QPushButton:hover {{ background-color: {hover}; }}
+        QWidget#syncControls QPushButton:focus {{ border: 1px solid #7c5cfc; }}
+        QWidget#syncControls QPushButton:pressed {{ background-color: {border}; }}
+        QWidget#syncControls QPushButton#syncPrimary {{ background-color: #6650cc; color: #ffffff; border-color: #6650cc; }}
+        QWidget#syncControls QPushButton#syncPrimary:hover {{ background-color: #7660dc; }}
+        QWidget#syncControls QPushButton#syncDanger {{ color: {'#ffaaaa' if dark else '#b63535'}; }}
+        QWidget#syncControls QPushButton:disabled {{ color: {muted}; background-color: transparent; border-color: {border}; }}
+        QWidget#syncControls QPushButton#syncPrimary:disabled {{ color: {muted}; background-color: transparent; border-color: {border}; }}
+        QWidget#syncControls QPushButton#syncDanger:disabled {{ color: {muted}; }}
+        """
+        from pulse.ui.calendar_style import calendar_colors
+        c = calendar_colors()
+        calendar_qss = f"""
+        QWidget#calendarPage, QWidget#calendarPage QScrollArea {{ background-color: {c['background']}; }}
+        QWidget#calendarPage QLabel {{ color: {c['text']}; }}
+        QLabel#calendarHeading {{ font-size: 28px; font-weight: 700; padding-bottom: 8px; }}
+        QLabel#calendarMonth {{ font-size: 18px; font-weight: 600; }}
+        QWidget#calendarPage QPushButton {{ background: transparent; color: {c['text']}; border: 1px solid transparent; border-radius: 4px; padding: 5px 10px; min-height: 20px; }}
+        QWidget#calendarPage QPushButton:hover {{ background: {c['hover']}; }}
+        QWidget#calendarPage QPushButton:focus {{ border-color: {c['muted']}; }}
+        QWidget#calendarPage QPushButton#calendarNew {{ background: {'#e6e6e4' if dark else '#37352f'}; color: {c['background']}; }}
+        QWidget#calendarPage QPushButton#calendarNew:hover {{ background: {c['muted']}; }}
+        """
+        return (DARK_QSS if dark else LIGHT_QSS) + buttons + calendar_qss
 
     def _resolved_mode(self) -> ThemeMode:
         if self._mode == ThemeMode.SYSTEM:

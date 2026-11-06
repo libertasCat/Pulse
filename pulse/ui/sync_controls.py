@@ -3,7 +3,7 @@ import copy
 import threading
 from datetime import datetime
 
-from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QPushButton, QSpinBox, QVBoxLayout, QWidget,
@@ -18,6 +18,7 @@ class SyncControls(QWidget):
 
     def __init__(self, config_mgr, repo, parent=None):
         super().__init__(parent)
+        self.setObjectName("syncControls")
         self.config_mgr = config_mgr
         self.repo = repo
         self.busy = False
@@ -50,7 +51,7 @@ class SyncControls(QWidget):
         self.interval.setRange(1, 1440)
         self.interval.setValue(max(1, cfg.interval_minutes))
         self.interval.setSuffix(" 分钟")
-        save = QPushButton("保存同步设置")
+        save = self.save_button = QPushButton("保存同步设置")
         save.clicked.connect(self.save)
         row.addWidget(self.auto)
         row.addWidget(self.interval)
@@ -60,10 +61,17 @@ class SyncControls(QWidget):
         self.buttons = []
         for title, mode in (("立即双向同步", "sync"), ("从邮箱同步", "pull"), ("用本机覆盖邮箱", "overwrite")):
             button = QPushButton(title)
+            button.setObjectName("syncDanger" if mode == "overwrite" else "syncPrimary" if mode == "sync" else "syncSecondary")
             button.clicked.connect(lambda checked=False, mode=mode: self.start(mode))
             row.addWidget(button)
             self.buttons.append(button)
         layout.addLayout(row)
+        self.inputs = [self.account, self.auth, self.password, self.auto, self.interval, self.save_button]
+        for button in [self.save_button, *self.buttons]:
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setMinimumHeight(32)
+        self.buttons[0].setToolTip("合并本机与邮箱数据，不丢弃本机未上传修改")
+        self.buttons[2].setToolTip("危险操作：其他设备下次同步时也会应用本机的删除")
         self.status = QLabel("未同步")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -148,7 +156,7 @@ class SyncControls(QWidget):
             if reply != QMessageBox.StandardButton.Yes:
                 return
         self.busy = True
-        for button in self.buttons:
+        for button in [*self.buttons, *self.inputs]:
             button.setEnabled(False)
         self.status.setText("正在同步，请稍候…")
         config = copy.deepcopy(cfg)
@@ -169,7 +177,9 @@ class SyncControls(QWidget):
         threading.Thread(target=work, name="pulse-mail-sync", daemon=True).start()
 
     def _finished(self, success, message):
+        if self._closed:
+            return
         self.busy = False
-        for button in self.buttons:
+        for button in [*self.buttons, *self.inputs]:
             button.setEnabled(True)
         self.status.setText(f"{datetime.now():%H:%M:%S} {'✓' if success else '✗'} {message}")

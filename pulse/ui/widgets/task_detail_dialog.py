@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal  # type: ignore
+from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal  # type: ignore
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (  # type: ignore
     QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
@@ -179,19 +179,32 @@ class TaskDetailDialog(QDialog):
 
         # 模态 + 无边框
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setModal(True)
-        self.setFixedSize(580, 620)
+        if parent:
+            self.setGeometry(parent.window().geometry())
+        else:
+            self.resize(900, 760)
 
         # 整体背景
-        self.setStyleSheet("QDialog { background: #1e1e34; border-radius: 14px; border: 1px solid #3a3a50; }")
+        self.setObjectName('taskOverlay')
+        self.setStyleSheet('QDialog#taskOverlay { background: rgba(0, 0, 0, 100); }')
 
-        lo = QVBoxLayout(self)
+        overlay = QVBoxLayout(self)
+        overlay.setContentsMargins(24, 24, 24, 24)
+        self._card = QFrame()
+        self._card.setObjectName('taskDetailCard')
+        self._card.setFixedSize(min(620, max(300, self.width() - 48)),
+                                min(700, max(240, self.height() - 48)))
+        overlay.addWidget(self._card, alignment=Qt.AlignmentFlag.AlignCenter)
+        lo = QVBoxLayout(self._card)
         lo.setContentsMargins(0, 0, 0, 0)
+        lo.setSpacing(0)
 
         # ── 内边容器 ──
         inner = QWidget()
-        inner.setStyleSheet("background: transparent;")
+        inner.setObjectName('taskContent')
+        inner.setStyleSheet('QWidget#taskContent { background: transparent; }')
         inner_lo = QVBoxLayout(inner)
         inner_lo.setContentsMargins(20, 10, 20, 14)
         inner_lo.setSpacing(6)
@@ -200,22 +213,24 @@ class TaskDetailDialog(QDialog):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; }")
         scroll.setWidget(inner)
-        lo.addWidget(scroll)
+        self._content_scroll = scroll
 
         # ── 关闭按钮 ──
         close_row = QHBoxLayout()
+        close_row.setContentsMargins(18, 10, 14, 8)
+        header_label = QLabel('任务详情')
+        header_label.setObjectName('taskHeaderLabel')
+        close_row.addWidget(header_label)
         close_row.addStretch()
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(28, 28)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        close_btn.setStyleSheet(
-            "QPushButton { background: #3a3a5a; border: none; border-radius: 14px; "
-            "color: #a0a0b8; font-size: 14px; }"
-            "QPushButton:hover { background: #f44336; color: #fff; }"
-        )
+        close_btn.setObjectName('taskClose')
+        close_btn.setToolTip('关闭（Esc）')
         close_btn.clicked.connect(self.close)
         close_row.addWidget(close_btn)
-        inner_lo.addLayout(close_row)
+        lo.addLayout(close_row)
+        lo.addWidget(scroll)
 
         if not self._task:
             inner_lo.addWidget(QLabel("任务不存在"))
@@ -295,7 +310,7 @@ class TaskDetailDialog(QDialog):
         )
         del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         del_btn.clicked.connect(self._delete_task)
-        inner_lo.addWidget(del_btn)
+        self._delete_task_btn = del_btn
 
         # ── 字段（带边框） ──
         inner_lo.addWidget(self._mk_label("字段"))
@@ -312,14 +327,17 @@ class TaskDetailDialog(QDialog):
         )
         add_field_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_field_btn.clicked.connect(self._add_field)
-        inner_lo.addWidget(add_field_btn)
+        add_field_btn.setText('+ 文本')
         image_row = QHBoxLayout()
+        image_row.setSpacing(4)
+        image_row.addWidget(add_field_btn)
         import_btn = QPushButton('+ 添加图片')
         import_btn.clicked.connect(self._import_images)
         paste_btn = QPushButton('粘贴图片')
         paste_btn.clicked.connect(self._paste_image)
         image_row.addWidget(import_btn)
         image_row.addWidget(paste_btn)
+        image_row.addStretch()
         inner_lo.addLayout(image_row)
 
         # ── 清单（功能清单模块） ──
@@ -366,9 +384,82 @@ class TaskDetailDialog(QDialog):
         comment_row.addWidget(self._comment_input)
         comment_row.addWidget(cs)
         inner_lo.addLayout(comment_row)
+        inner_lo.addWidget(del_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # 剩余空间全部挤到底部，中间不留空隙
         inner_lo.addStretch(1)
+        self._ui_ready = True
+        self._apply_notion_buttons()
+
+    def _apply_notion_buttons(self):
+        """Apply one restrained button style, including dynamically rebuilt sections."""
+        from pulse.ui.theme import ThemeManager
+        dark = ThemeManager.instance().current_name == 'dark'
+        background = '#202020' if dark else '#ffffff'
+        foreground = '#e8e8e8' if dark else '#37352f'
+        muted = '#aaaaaa' if dark else '#73716d'
+        hover = '#333333' if dark else '#f1f1ef'
+        border = '#404040' if dark else '#e5e5e2'
+        colors = {
+            '#ffffff': foreground, '#e0e0e8': foreground, '#c0c0d0': foreground,
+            '#808098': muted, '#606080': muted, '#a0a0b8': muted,
+            '#1e1e34': background, '#25253a': background, '#22223a': background,
+            '#3a3a50': border, '#33334e': border, '#5a5a7a': muted,
+        }
+        for widget in self._card.findChildren(QWidget):
+            if not isinstance(widget, QPushButton):
+                style = widget.styleSheet()
+                for original, replacement in colors.items():
+                    style = style.replace(original, replacement)
+                widget.setStyleSheet(style)
+        self._card.setStyleSheet(f'''
+            QFrame#taskDetailCard {{ background: {background}; border: 1px solid {border}; border-radius: 10px; }}
+            QLabel#taskHeaderLabel {{ color: {muted}; font-size: 12px; }}
+            QPushButton {{ color: {foreground}; background: transparent; border: 1px solid transparent;
+                border-radius: 5px; padding: 6px 10px; font-size: 12px; }}
+            QPushButton:hover {{ background: {hover}; }}
+            QPushButton:pressed {{ background: {border}; }}
+            QPushButton:focus {{ border-color: {muted}; }}
+            QPushButton#taskDanger {{ color: #d44c47; }}
+            QPushButton#taskDanger:hover {{ background: {'#3d2626' if dark else '#fff0ef'}; }}
+            QPushButton#taskPrimary {{ background: {foreground}; color: {background}; }}
+            QPushButton#taskPrimary:hover {{ background: {muted}; }}
+            QPushButton#taskClose {{ padding: 0; font-size: 15px; }}
+        ''')
+        for button in self._card.findChildren(QPushButton):
+            button.setStyleSheet('')
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            if button.text() in ('删除此任务', '删除图片', '✕') and button.objectName() != 'taskClose':
+                button.setObjectName('taskDanger')
+            elif button.text() in ('发送', '保存'):
+                button.setObjectName('taskPrimary')
+            if button.text() == '✕':
+                button.setFixedSize(26, 26)
+            button.style().unpolish(button)
+            button.style().polish(button)
+        QTimer.singleShot(0, self._resize_all_fields)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._resize_all_fields)
+
+    def mousePressEvent(self, event):
+        if (event.button() == Qt.MouseButton.LeftButton and
+                not self._card.geometry().contains(event.position().toPoint())):
+            self.reject()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def done(self, result):
+        # Clicking the backdrop or Esc may not emit editingFinished first.
+        if self._repo.get_task_by_id(self._task_id):
+            if hasattr(self, '_title_edit'):
+                self._save_title()
+            for edit in self._card.findChildren(QLineEdit):
+                if edit.hasFocus():
+                    edit.clearFocus()
+        super().done(result)
 
     @staticmethod
     def _make_date_edit(value) -> _DatePickerButton:
@@ -397,6 +488,8 @@ class TaskDetailDialog(QDialog):
                 self._add_image_widget(field)
             else:
                 self._add_field_widget(field.id, field.content)
+        if getattr(self, '_ui_ready', False):
+            self._apply_notion_buttons()
 
     def _insert_image(self, image, after_field_id=None):
         if isinstance(image, list):
@@ -458,6 +551,7 @@ class TaskDetailDialog(QDialog):
     def _resize_to_content(edit: QTextEdit):
         """按内容实际高度自适应（Notion 风格）：不裁剪、不用内部滚轮，
         整个对话框滚动。空字段统一 30px."""
+        edit.document().setTextWidth(max(1, edit.viewport().width()))
         doc_h = int(edit.document().size().height()) + 8
         h = max(30, doc_h)
         edit.setFixedHeight(h)
@@ -538,6 +632,8 @@ class TaskDetailDialog(QDialog):
             return
         for cl in self._repo.get_checklists(self._task_id):
             self._add_checklist_widget(cl)
+        if getattr(self, '_ui_ready', False):
+            self._apply_notion_buttons()
 
     def _add_checklist_widget(self, cl):
         items = list(cl.items or [])
@@ -708,6 +804,8 @@ class TaskDetailDialog(QDialog):
             return
         for c in self._repo.get_comments(self._task_id):
             self._add_comment_widget(c)
+        if getattr(self, '_ui_ready', False):
+            self._apply_notion_buttons()
 
     def _add_comment_widget(self, c):
         frame = QFrame()

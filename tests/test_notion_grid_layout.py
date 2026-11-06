@@ -30,7 +30,7 @@ def test_cross_week_task_reflows_in_each_calendar_row():
 
     heights = grid._natural_heights()
     crowded_height = 34 + 3 * 22 + 4
-    compact_height = 34 + 1 * 22 + 4
+    compact_height = 96  # Quiet weeks retain readable calendar-cell height.
     assert heights[0] >= crowded_height
     assert heights[1] >= crowded_height
     assert heights[2] == compact_height

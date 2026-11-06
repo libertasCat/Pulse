@@ -41,6 +41,7 @@ class Repository:
     def _migrate(self) -> None:
         """增量迁移：为已有表补充新列."""
         with self.session() as s:
+            s.execute(text('CREATE INDEX IF NOT EXISTS ix_app_sessions_start_time ON app_sessions (start_time)'))
             # 检查 app_sessions 是否有 executable_path 列
             from sqlalchemy import inspect
             inspector = inspect(self._engine)
@@ -196,12 +197,19 @@ class Repository:
 
     def get_daily_summaries(self, start_date: date, num_days: int) -> list[dict]:
         """获取连续多天每天的总使用时长."""
-        summaries = []
-        for i in range(num_days):
-            d = start_date + timedelta(days=i)
-            total = self.get_total_duration_by_date(d)
-            summaries.append({"date": d, "total_seconds": total})
-        return summaries
+        if num_days <= 0:
+            return []
+        start = datetime.combine(start_date, datetime.min.time())
+        end = start + timedelta(days=num_days)
+        with self.session() as s:
+            rows = s.query(func.date(AppSession.start_time), func.sum(AppSession.duration_seconds)).filter(
+                AppSession.start_time >= start, AppSession.start_time < end,
+                AppSession.is_idle == False,
+            ).group_by(func.date(AppSession.start_time)).all()
+        totals = {str(day): int(total or 0) for day, total in rows}
+        return [{"date": start_date + timedelta(days=i),
+                 "total_seconds": totals.get((start_date + timedelta(days=i)).isoformat(), 0)}
+                for i in range(num_days)]
 
     def get_daily_totals_for_month(self, year: int, month: int) -> list[dict]:
         """获取某月每天的总使用时长."""

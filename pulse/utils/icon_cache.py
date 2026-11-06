@@ -80,7 +80,7 @@ def _cache_icon(name: str, icon: QIcon) -> None:
     _PIXMAP_CACHE[name] = icon
 
 
-def get_app_icon(process_name: str, exe_path: Optional[str] = None) -> QIcon:
+def get_app_icon(process_name: str, exe_path: Optional[str] = None, *, allow_extract: bool = True) -> QIcon:
     """获取应用图标（LRU 缓存命中则直接返回）. """
     global _PIXMAP_CACHE
     if _PIXMAP_CACHE is None:
@@ -92,7 +92,7 @@ def get_app_icon(process_name: str, exe_path: Optional[str] = None) -> QIcon:
     pm = None
 
     # 方法1: 从 exe 直接提取
-    if exe_path and os.path.isfile(exe_path):
+    if allow_extract and exe_path and os.path.isfile(exe_path):
         pm = _extract_exe_icon(exe_path)
         if pm:
             _ensure_icon_dir()
@@ -112,6 +112,8 @@ def get_app_icon(process_name: str, exe_path: Optional[str] = None) -> QIcon:
     # 方法3: 兜底占位图标
     if pm is None or pm.isNull():
         icon = _make_fallback()
+        if not allow_extract:
+            return icon  # Do not prevent a later normal lookup from extracting the real icon.
     else:
         icon = QIcon(pm)
 

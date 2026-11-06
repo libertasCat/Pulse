@@ -1,0 +1,81 @@
+name: Build macOS release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+      PYTHONPATH: .
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-macos-release.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements-macos-release.txt
+      - name: Offline regression tests
+        run: |
+          python tests/test_macos.py
+          python tests/test_mail_sync.py
+          python tests/test_stats_performance.py
+          python tests/test_task_images.py
+          python tests/test_task_dialog_interaction.py
+          python tests/test_sync_controls.py
+          python -c "from tests.test_notion_grid_layout import test_cross_week_task_reflows_in_each_calendar_row; test_cross_week_task_reflows_in_each_calendar_row()"
+      - name: Build app
+        run: python -m PyInstaller --noconfirm --clean Pulse-macOS.spec
+      - name: Verify architecture and packaged runtime
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          lipo -verify_arch "$TARGET_ARCH" dist/Pulse.app/Contents/MacOS/Pulse
+          dist/Pulse.app/Contents/MacOS/Pulse --self-test "$RUNNER_TEMP/self-test.json"
+          python -c 'import json, os; from pathlib import Path; r=json.loads((Path(os.environ["RUNNER_TEMP"])/"self-test.json").read_text()); print(r); assert r["ok"] and r["version"] == os.environ["RELEASE_TAG"].removeprefix("v")'
+      - name: Archive and verify extracted app
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent dist/Pulse.app "dist/Pulse_${RELEASE_TAG}_macOS_${TARGET_ARCH}.zip"
+          ditto -x -k "dist/Pulse_${RELEASE_TAG}_macOS_${TARGET_ARCH}.zip" "$RUNNER_TEMP/extracted"
+          "$RUNNER_TEMP/extracted/Pulse.app/Contents/MacOS/Pulse" --self-test "$RUNNER_TEMP/extracted-test.json"
+          python -c 'import json, os; from pathlib import Path; r=json.loads((Path(os.environ["RUNNER_TEMP"])/"extracted-test.json").read_text()); print(r); assert r["ok"]'
+      - name: Upload verified release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: gh release upload "$RELEASE_TAG" "dist/Pulse_${RELEASE_TAG}_macOS_${TARGET_ARCH}.zip" --clobber
